@@ -45,7 +45,9 @@ export function createDiscordRuntime(options: DiscordRuntimeOptions): DiscordRun
     timeZone: options.config.timeZone,
     inactiveTargets: [
       ...(options.config.enableMeta ? [] : ["provider-meta"]),
-      ...(options.config.enableQwen ? [] : ["provider-qwen"])
+      ...(options.config.enableQwen ? [] : ["provider-qwen"]),
+      ...(options.config.enableZai ? [] : ["provider-zai"]),
+      ...(options.config.enableMoonshot ? [] : ["provider-moonshot"])
     ],
     ...(options.logger ? { logger: options.logger } : {})
   });

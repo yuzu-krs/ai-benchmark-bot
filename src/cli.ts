@@ -49,7 +49,9 @@ async function main(): Promise<void> {
     case "check-sources": {
       const adapters = createSourceAdapters({
         enableMeta: config.enableMeta,
-        enableQwen: config.enableQwen
+        enableQwen: config.enableQwen,
+        enableZai: config.enableZai,
+        enableMoonshot: config.enableMoonshot
       });
       let failures = 0;
       for (const adapter of adapters) {
@@ -161,7 +163,9 @@ async function main(): Promise<void> {
       const qwenReady = qwenStreak >= REQUIRED_STAGED_CONTRACT_DAYS;
       const sources = createSourceAdapters({
         enableMeta: config.enableMeta && metaReady,
-        enableQwen: config.enableQwen && qwenReady
+        enableQwen: config.enableQwen && qwenReady,
+        enableZai: config.enableZai,
+        enableMoonshot: config.enableMoonshot
       }).map((adapter) => adapter.id);
       store.close();
       const contractsOk = (!config.enableMeta || metaReady) && (!config.enableQwen || qwenReady);

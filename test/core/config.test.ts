@@ -6,13 +6,17 @@ describe("loadConfig", () => {
     const config = loadConfig({
       DATABASE_PATH: "./tmp/test.sqlite",
       ENABLE_META: "true",
-      ENABLE_QWEN: "0"
+      ENABLE_QWEN: "0",
+      ENABLE_ZAI: "yes",
+      ENABLE_MOONSHOT: "off"
     });
 
     expect(config.timeZone).toBe("Asia/Tokyo");
     expect(config.digestHour).toBe(7);
     expect(config.enableMeta).toBe(true);
     expect(config.enableQwen).toBe(false);
+    expect(config.enableZai).toBe(true);
+    expect(config.enableMoonshot).toBe(false);
     expect(config.databasePath).toMatch(/tmp[\\/]test\.sqlite$/);
   });
 
@@ -27,6 +31,12 @@ describe("loadConfig", () => {
         })
       )
     ).toEqual({ discordToken: "token", discordClientId: "client", discordGuildId: "guild" });
+  });
+
+  it("keeps terms-review adapters opt-in by default", () => {
+    const config = loadConfig({});
+    expect(config.enableZai).toBe(false);
+    expect(config.enableMoonshot).toBe(false);
   });
 
   it("rejects an invalid time zone before the scheduler starts", () => {

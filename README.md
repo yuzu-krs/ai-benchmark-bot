@@ -6,6 +6,7 @@ AIベンチマークの順位変動と公式モデル発表を監視し、個人
 
 - LMArena Overall / Codingを3時間ごと、SWE-bench Verifiedを6時間ごとに監視
 - OpenAI、Anthropic、Google Gemini、Mistral、xAI、DeepSeekの公式更新元を1時間ごとに監視
+- Z.aiとMoonshot AI / Kimiの公式Markdown adapterをopt-inで利用可能
 - 公式発表とベンチマーク初登場を別イベントとして保存
 - Top 10出入り、大幅順位変動、verified変更、定義変更、障害・復旧を即時通知
 - 細かな変動を07:00（Asia/Tokyo）の日次ダイジェストへ集約
@@ -14,6 +15,10 @@ AIベンチマークの順位変動と公式モデル発表を監視し、個人
 - SQLite WAL、migration、保持期限処理、Online Backup、systemd unit
 
 MetaとQwenのadapterも含まれますが、既定では無効です。`npm run contracts:check-staged` をJSTの異なる7日間に1回ずつ成功させると、DB内のcontract gateが解除されます。その後 `ENABLE_META=true` / `ENABLE_QWEN=true` でBotを再起動し、対応する `/benchmark watch enable` を実行して段階的に有効化できます。7日未満では環境変数を有効にしてもadapterはfail closedで停止します。
+
+Z.aiは公式の構造化された[Model Release Notes](https://docs.z.ai/release-notes/new-released)を、MoonshotはPlatform Changelogが最近のモデルを網羅しないため、機械可読な[Model List](https://platform.kimi.ai/docs/models)を監視します。Moonshotの通知は「発表」ではなく「公式モデル一覧への追加」と区別します。
+
+ただし、両社の利用規約には自動取得・データ抽出・名称表示に関する広い制限があり、公開Markdownの提供だけをもって第三者Botでの定期利用が許諾済みとは判断していません。そのため両adapterとwatchは既定OFFです。現在の[Z.ai Terms](https://docs.z.ai/legal-agreement/terms-of-use)と[Kimi OpenPlatform Terms](https://platform.kimi.ai/docs/agreement/modeluse)を確認し、利用可能と判断した場合だけ `ENABLE_ZAI=true` / `ENABLE_MOONSHOT=true` を設定して再起動し、対応する `/benchmark watch enable` を実行してください。
 
 ## 必要環境
 
@@ -85,6 +90,8 @@ Linux VMへの配備手順は [deploy/README.md](deploy/README.md)、環境変�
 - LMArena: 公式Hugging Face dataset（CC BY 4.0）。投稿には公式URLを付与します。
 - SWE-bench: 公式 `leaderboards.json`（CC BY-NC 4.0を前提）。商用・一般公開化の前に再利用条件を再確認してください。
 - 公式発表: 記事本文は保存せず、タイトル、短い説明、URL、hashのみ保存します。
+
+本Botは各取得元と非提携の個人向けプロジェクトです。ロゴや記事本文は転載せず、公開されている更新情報の最小限のメタデータと公式リンクだけを扱います。この制限は取得許諾を代替するものではありません。一般公開・商用化する場合は、すべての取得元の最新利用条件と必要な許諾を改めて確認してください。
 
 Artificial Analysis、LiveBench、終了済みOpen LLM LeaderboardはMVP対象外です。
 

@@ -44,6 +44,24 @@ describe("Discord embeds", () => {
     expect(embed.fields?.at(-1)?.value).toContain("huggingface.co/datasets/lmarena-ai");
   });
 
+  it("labels a Moonshot catalog addition as availability rather than an announcement", () => {
+    const embed = buildEventEmbed(
+      event({
+        type: "provider.model_available",
+        sourceId: "moonshot",
+        leaderboardId: undefined,
+        payload: {
+          sourceId: "moonshot",
+          title: "Kimi K3",
+          url: "https://platform.kimi.ai/docs/models"
+        }
+      })
+    );
+    expect(embed.title).toBe("公式モデル一覧への追加");
+    expect(embed.description).toContain("公式モデル一覧へ追加");
+    expect(embed.description).not.toContain("発表されました");
+  });
+
   it("keeps large digests within embed field limits", () => {
     const events = Array.from({ length: 100 }, (_, index) =>
       event({

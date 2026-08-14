@@ -265,6 +265,28 @@ describe("SqliteBotStore", () => {
     });
   });
 
+  it("keeps an official catalog addition distinct from a model announcement", () => {
+    const baseline = announcements("2099-08-14T00:00:00.000Z", []);
+    baseline.sourceId = "moonshot";
+    baseline.providerName = "Moonshot AI";
+    store.processSnapshot(baseline);
+
+    const available = announcementItem("kimi-k3");
+    available.title = "Kimi K3";
+    available.eventKind = "availability";
+    const next = announcements("2099-08-14T01:00:00.000Z", [available]);
+    next.sourceId = "moonshot";
+    next.providerName = "Moonshot AI";
+    const result = store.processSnapshot(next);
+
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({
+      type: "provider.model_available",
+      immediate: true,
+      payload: { metadata: { eventKind: "availability" } }
+    });
+  });
+
   it("does not suppress a legitimate A-to-B rank oscillation on a later source revision", () => {
     const original = Array.from({ length: 20 }, (_, index) => leaderboardEntry(index + 1));
     const moved = original.map((item) =>
@@ -544,19 +566,28 @@ describe("SqliteBotStore", () => {
     expect(store.claimPendingDeliveries("2099-01-04T00:00:00.000Z", 10)).toHaveLength(1);
   });
 
-  it("defaults phase-two provider watches off and permits an explicit enable", () => {
+  it("defaults staged and terms-review provider watches off and permits an explicit enable", () => {
     store.setGuildChannel("guild", "channel", "Asia/Tokyo");
     const watches = new Map(
       store.listWatchTargets("guild").map((target) => [target.target, target.enabled])
     );
     expect(watches.get("provider-meta")).toBe(false);
     expect(watches.get("provider-qwen")).toBe(false);
+    expect(watches.get("provider-zai")).toBe(false);
+    expect(watches.get("provider-moonshot")).toBe(false);
+    const optInTargets = new Set([
+      "provider-meta",
+      "provider-qwen",
+      "provider-zai",
+      "provider-moonshot"
+    ]);
     expect(
       [...watches.entries()]
-        .filter(([target]) => target !== "provider-meta" && target !== "provider-qwen")
+        .filter(([target]) => !optInTargets.has(target))
         .every(([, enabled]) => enabled)
     ).toBe(true);
     expect(store.isWatchTargetEnabled("unconfigured-guild", "provider-meta")).toBe(false);
+    expect(store.isWatchTargetEnabled("unconfigured-guild", "provider-zai")).toBe(false);
     store.setWatchTarget("guild", "provider-meta", true);
     expect(store.isWatchTargetEnabled("guild", "provider-meta")).toBe(true);
 

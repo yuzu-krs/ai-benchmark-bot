@@ -45,7 +45,9 @@ async function main(): Promise<void> {
   const runtimeConfig = { ...config, enableMeta, enableQwen };
   const adapters = createSourceAdapters({
     enableMeta,
-    enableQwen
+    enableQwen,
+    enableZai: config.enableZai,
+    enableMoonshot: config.enableMoonshot
   });
   store.syncActiveSources(
     adapters.map((adapter) => adapter.id),

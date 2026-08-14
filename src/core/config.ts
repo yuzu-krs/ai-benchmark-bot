@@ -39,7 +39,9 @@ const configSchema = z.object({
   GITHUB_TOKEN: optionalSecret,
   HUGGINGFACE_TOKEN: optionalSecret,
   ENABLE_META: booleanFromEnv.default(false),
-  ENABLE_QWEN: booleanFromEnv.default(false)
+  ENABLE_QWEN: booleanFromEnv.default(false),
+  ENABLE_ZAI: booleanFromEnv.default(false),
+  ENABLE_MOONSHOT: booleanFromEnv.default(false)
 });
 
 export interface AppConfig {
@@ -56,6 +58,8 @@ export interface AppConfig {
   huggingFaceToken?: string;
   enableMeta: boolean;
   enableQwen: boolean;
+  enableZai: boolean;
+  enableMoonshot: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -68,7 +72,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     digestMinute: parsed.DIGEST_MINUTE,
     logLevel: parsed.LOG_LEVEL,
     enableMeta: parsed.ENABLE_META,
-    enableQwen: parsed.ENABLE_QWEN
+    enableQwen: parsed.ENABLE_QWEN,
+    enableZai: parsed.ENABLE_ZAI,
+    enableMoonshot: parsed.ENABLE_MOONSHOT
   };
 
   if (parsed.DISCORD_TOKEN) config.discordToken = parsed.DISCORD_TOKEN;

@@ -13,6 +13,8 @@ export interface RawAnnouncement {
   summary?: string;
   modelIdHints?: string[];
   explicitModelIds?: string[];
+  officialModelEntry?: boolean;
+  authoritativeModelIds?: boolean;
 }
 
 interface Classification {
@@ -29,6 +31,10 @@ const MODEL_TOKEN_SOURCE = [
   `gemini[-\\s]?\\d+(?:\\.\\d+)*(?:[-\\s](?:flash(?:-lite)?|pro|ultra|nano|robotics(?:-er)?|omni)){0,2}(?:-${ID_SUFFIX}){0,3}`,
   `grok[-\\s]?\\d+(?:\\.\\d+)*(?:-${ID_SUFFIX}){0,4}`,
   `deepseek[-\\s]?[rv]?\\d+(?:\\.\\d+)*(?:-${ID_SUFFIX}){0,4}`,
+  `glm[-\\s]?\\d+(?:\\.\\d+)*v?(?:-${ID_SUFFIX}){0,4}`,
+  `autoglm(?:[-\\s][a-z0-9]+){1,5}`,
+  `kimi[-\\s]?k?\\d+(?:\\.\\d+)*(?:-${ID_SUFFIX}){0,5}`,
+  `moonshot[-\\s]?v\\d+(?:\\.\\d+)*(?:-${ID_SUFFIX}){0,5}`,
   `llama[-\\s]?\\d+(?:\\.\\d+)*(?:-${ID_SUFFIX}){0,4}`,
   `qwen[-\\s]?\\d+(?:\\.\\d+)*(?:-${ID_SUFFIX}){0,5}`,
   `qwq[-\\s]?\\d+(?:\\.\\d+)*(?:-${ID_SUFFIX}){0,4}`,
@@ -59,7 +65,8 @@ export function buildAnnouncementItems(
       title,
       classificationSummary,
       raw.modelIdHints ?? [],
-      raw.explicitModelIds ?? []
+      raw.explicitModelIds ?? [],
+      raw.officialModelEntry === true
     );
     if (!classification) continue;
     const itemKey = fingerprint({ sourceId, key: raw.key });
@@ -70,7 +77,9 @@ export function buildAnnouncementItems(
       itemKey,
       title,
       url: raw.url,
-      modelIds: classification.modelIds,
+      modelIds: raw.authoritativeModelIds
+        ? extractModelIds("", raw.modelIdHints ?? [], raw.explicitModelIds ?? [])
+        : classification.modelIds,
       stage: classification.stage,
       confidence: classification.confidence,
       modality: classification.modality
@@ -86,18 +95,22 @@ export function classifyAnnouncement(
   title: string,
   summary = "",
   modelIdHints: string[] = [],
-  explicitModelIds: string[] = []
+  explicitModelIds: string[] = [],
+  officialModelEntry = false
 ): Classification | null {
   const text = cleanText(`${title} ${summary}`, 2_000);
   const lower = text.toLowerCase();
   const hasKnownFamily = MODEL_PATTERN.test(text);
   const recognizedHint = modelIdHints.some((hint) => MODEL_PATTERN.test(hint));
+  const validExplicitModelIds = explicitModelIds.filter((modelId) =>
+    EXPLICIT_ID_PATTERN.test(modelId.trim().replace(/^model:\s*/i, ""))
+  );
   const hasDescribedModel =
     /\b(?:language|large language|multimodal|vision-language|reasoning|code|coding|foundation|frontier) models?\b/i.test(
       text
     ) || /\b\d+(?:\.\d+)?b\s+(?:open[- ]weights?\s+)?(?:multimodal\s+)?(?:\w+\s+)?model\b/i.test(text);
   const isModelRelated =
-    hasKnownFamily || recognizedHint || explicitModelIds.length > 0 || hasDescribedModel;
+    hasKnownFamily || recognizedHint || validExplicitModelIds.length > 0 || hasDescribedModel;
   if (!isModelRelated) return null;
 
   const firstSentence = summary.split(/(?<=[.!?])\s/, 1)[0] ?? summary;
@@ -118,7 +131,7 @@ export function classifyAnnouncement(
     /\b(?:introduc(?:e|ed|ing)|announc(?:e|ed|ing)|unveil(?:ed|ing)?|launch(?:ed|ing)?|releas(?:e|ed|ing))\b[^.!?\n]{0,100}\b(?:new|latest|first|frontier|reasoning|language|coding|code|multimodal|preview|experimental|stable|open[- ]weights?) models?\b/i.test(
       text
     );
-  const explicitIdLaunch = explicitModelIds.some((modelId) => {
+  const explicitIdLaunch = validExplicitModelIds.some((modelId) => {
     const escaped = modelId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return new RegExp(
       `\\b(?:introduc(?:e|ed|ing)|announc(?:e|ed|ing)|unveil(?:ed|ing)?|launch(?:ed|ing)?|releas(?:e|ed|ing))\\s+(?:(?:the|our|a|an|new|all-new|first|version|family|models?|of|officially)\\s+){0,6}${escaped}\\b`,
@@ -129,7 +142,8 @@ export function classifyAnnouncement(
     directVerbThenModel ||
     directModelThenAvailability ||
     explicitIdLaunch ||
-    (genericNamedModelLaunch && !hasProductFeatureLead);
+    (genericNamedModelLaunch && !hasProductFeatureLead) ||
+    (officialModelEntry && (recognizedHint || validExplicitModelIds.length > 0));
 
   const deprecation =
     /\b(?:deprecat(?:e|ed|ing|ion)|retir(?:e|ed|ing|ement)|sunset|shut(?:ting)? down|end of life)\b/i.test(
@@ -142,11 +156,11 @@ export function classifyAnnouncement(
   if (deprecationInTitle || (deprecation && !directNewModel)) return null;
 
   const imageSpecificFamily =
-    /\b(?:[a-z0-9]+(?:-[a-z0-9]+)*-image(?:-[a-z0-9.]+)*|gemini[-\s]\d+(?:\.\d+)*(?:[-\s](?:flash(?:[-\s]lite)?|pro))?[-\s]image|grok-imagine(?:-[a-z0-9.]+)*|qwen[-\s]?(?:vlo|image)(?:-[a-z0-9.]+)*|nano banana(?:\s+\d+)?|imagen(?:[-\s]?\d+)?|veo(?:[-\s]?\d+)?|dall-e(?:[-\s]?\d+)?|sora(?:[-\s]?\d+)?)\b/i.test(
+    /\b(?:[a-z0-9]+(?:-[a-z0-9]+)*-image(?:-[a-z0-9.]+)*|gemini[-\s]\d+(?:\.\d+)*(?:[-\s](?:flash(?:[-\s]lite)?|pro))?[-\s]image|grok-imagine(?:-[a-z0-9.]+)*|qwen[-\s]?(?:vlo|image)(?:-[a-z0-9.]+)*|glm[-\s]?(?:image|ocr)(?:-[a-z0-9.]+)*|cogvideox?(?:-[a-z0-9.]+)*|nano banana(?:\s+\d+)?|imagen(?:[-\s]?\d+)?|veo(?:[-\s]?\d+)?|dall-e(?:[-\s]?\d+)?|sora(?:[-\s]?\d+)?)\b/i.test(
       text
     );
   const audioSpecificFamily =
-    /\b(?:audio-to-audio|native audio(?: output| model)?|voice-first|speech(?:-to-speech| synthesis| recognition)|grok[-\s]voice|qwen[-\s]?(?:tts|asr)|gemini[-\s][-a-z0-9.]*live(?:[-\s][a-z0-9.]+)*)\b/i.test(
+    /\b(?:audio-to-audio|native audio(?: output| model)?|voice-first|speech(?:-to-speech| synthesis| recognition)|grok[-\s]voice|qwen[-\s]?(?:tts|asr)|glm[-\s]?asr(?:-[a-z0-9.]+)*|gemini[-\s][-a-z0-9.]*live(?:[-\s][a-z0-9.]+)*)\b/i.test(
       text
     );
   const mediaOnly =
@@ -154,11 +168,11 @@ export function classifyAnnouncement(
       text
     ) || /\b(?:native visual|image|video|audio|speech|voice) models?\b/i.test(text);
   const specializedNonGenerative =
-    /\b(?:embedding|embeddings|rerank|reranker|reranking|classifier|training method|reinforcement learning method)\b/i.test(
+    /\b(?:embedding|embeddings|rerank|reranker|reranking|classifier|optical character recognition|\bocr\b|training method|reinforcement learning method)\b/i.test(
       text
     );
   const hasTextCapability =
-    /\b(?:language model|llm|vision-language|text(?:-only)? output|returns? text|generat(?:e|es|ing) text|responses? (?:in|as) (?:both )?text|text reasoning|coding|code model|agent|reasoning model)\b/i.test(
+    /\b(?:language models?|llm|vision-language|text(?:-only)? output|returns? text|generat(?:e|es|ing) text|responses? (?:in|as) (?:both )?text|text reasoning|coding|code models?|agents?|reasoning models?)\b/i.test(
       text
     );
   if (
@@ -182,7 +196,7 @@ export function classifyAnnouncement(
       text
     );
   const inherentlyTextFamily =
-    /(?:\b(?:gpt|claude|gemini|grok|deepseek|llama|qwq|mistral|mixtral|ministral|codestral|devstral|magistral|muse[-\s]spark)\b|\bqwen\d*\b)/i.test(
+    /(?:\b(?:gpt|claude|gemini|grok|deepseek|glm|autoglm|kimi|moonshot|llama|qwq|mistral|mixtral|ministral|codestral|devstral|magistral|muse[-\s]spark)\b|\bqwen\d*\b)/i.test(
       text
     );
   if (!hasTextCapability && !(inherentlyTextFamily && !ambiguousOutputFamily)) return null;
@@ -200,7 +214,7 @@ export function classifyAnnouncement(
   let modality: AnnouncementItem["modality"] = "text";
   if (/\b(?:coding|code model|coder|codestral|devstral|software engineering)\b/i.test(text)) {
     modality = "coding";
-  } else if (/\b(?:agent|agentic|ai teammate|computer use)\b/i.test(text)) {
+  } else if (/\b(?:agents?|agentic|ai teammate|computer use|mobile automation|gui task)\b/i.test(text)) {
     modality = "agent";
   } else if (
     /\b(?:vision-language|image input|audio (?:and|with) text inputs?|visual reasoning|multimodal)\b/i.test(text) &&
@@ -212,7 +226,7 @@ export function classifyAnnouncement(
   return {
     confidence: directNewModel ? "confirmed" : "candidate",
     modality,
-    modelIds: extractModelIds(text, modelIdHints, explicitModelIds),
+    modelIds: extractModelIds(text, modelIdHints, validExplicitModelIds),
     stage: detectReleaseStage(lower)
   };
 }

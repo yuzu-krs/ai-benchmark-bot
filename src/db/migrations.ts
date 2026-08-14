@@ -257,6 +257,21 @@ SELECT event_id, guild_id, MIN(created_at)
  WHERE event_id IS NOT NULL
  GROUP BY event_id, guild_id;
 `
+  },
+  {
+    version: 5,
+    name: "zai_and_moonshot_opt_in_watch_defaults",
+    sql: `
+INSERT OR IGNORE INTO subscriptions
+  (id, guild_id, target, enabled, created_at, updated_at)
+SELECT lower(hex(randomblob(16))), guild_id, 'provider-zai', 0, updated_at, updated_at
+  FROM guild_settings;
+
+INSERT OR IGNORE INTO subscriptions
+  (id, guild_id, target, enabled, created_at, updated_at)
+SELECT lower(hex(randomblob(16))), guild_id, 'provider-moonshot', 0, updated_at, updated_at
+  FROM guild_settings;
+`
   }
 ];
 

@@ -103,7 +103,12 @@ function validLimit(value: number, maximum = 1000): number {
 }
 
 function defaultWatchEnabled(target: string): boolean {
-  return target !== "provider-meta" && target !== "provider-qwen";
+  return ![
+    "provider-meta",
+    "provider-qwen",
+    "provider-zai",
+    "provider-moonshot"
+  ].includes(target);
 }
 
 function validatePhaseTwoSource(sourceId: string): asserts sourceId is PhaseTwoSourceId {
@@ -158,7 +163,8 @@ function announcementContentHash(snapshot: AnnouncementSnapshot): string {
         modelIds: [...item.modelIds].sort(),
         stage: item.stage,
         confidence: item.confidence,
-        modality: item.modality
+        modality: item.modality,
+        eventKind: item.eventKind ?? "announcement"
       }))
       .sort((left, right) => left.itemKey.localeCompare(right.itemKey))
   });
@@ -1108,7 +1114,9 @@ export class SqliteBotStore implements BotStore {
   ): DomainEvent {
     return createDomainEvent({
       type:
-        item.confidence === "confirmed"
+        item.confidence === "confirmed" && item.eventKind === "availability"
+          ? "provider.model_available"
+          : item.confidence === "confirmed"
           ? "provider.model_announced"
           : "provider.announcement_candidate",
       sourceId: snapshot.sourceId,
@@ -1124,6 +1132,7 @@ export class SqliteBotStore implements BotStore {
           providerName: snapshot.providerName,
           modelIds: item.modelIds,
           modality: item.modality,
+          eventKind: item.eventKind ?? "announcement",
           summary: item.summary?.slice(0, 500)
         }
       },

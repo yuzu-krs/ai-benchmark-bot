@@ -17,6 +17,8 @@ export const WATCH_TARGET_LABELS: Record<(typeof WATCH_TARGETS)[number], string>
   "provider-mistral": "Mistral AI",
   "provider-xai": "xAI",
   "provider-deepseek": "DeepSeek",
+  "provider-zai": "Z.ai（opt-in）",
+  "provider-moonshot": "Moonshot AI / Kimi（opt-in）",
   "provider-meta": "Meta AI（段階導入）",
   "provider-qwen": "Qwen（段階導入）"
 };

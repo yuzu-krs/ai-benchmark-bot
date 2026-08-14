@@ -13,7 +13,9 @@ const config: AppConfig = {
   digestMinute: 0,
   logLevel: "error",
   enableMeta: false,
-  enableQwen: false
+  enableQwen: false,
+  enableZai: false,
+  enableMoonshot: false
 };
 
 function fakeStore(overrides: Partial<BotStore> = {}): BotStore {

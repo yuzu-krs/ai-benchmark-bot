@@ -51,3 +51,5 @@ journalctl -u ai-benchmark-bot-contract-check.service
 timerは毎日04:15（Asia/Tokyo）に実行され、停止中に予定時刻を過ぎても`Persistent=true`により次回起動時に追いつきます。すぐに1回確認する場合は `sudo systemctl start ai-benchmark-bot-contract-check.service` を実行します。
 
 `doctor`で各adapterの`ready`が`true`になったことを確認してから環境ファイルの`ENABLE_META` / `ENABLE_QWEN`を変更し、サービスを再起動します。contract versionが更新された場合は新しい7日間の確認が必要です。段階導入の検証を終えて定期確認が不要になった場合は `sudo systemctl disable --now ai-benchmark-bot-contract-check.timer` で停止できます。
+
+Z.ai / Moonshot adapterは利用条件の確認が必要なため既定OFFです。README記載の公式Termsを確認し、利用可能と判断した場合だけ環境ファイルの`ENABLE_ZAI` / `ENABLE_MOONSHOT`を`true`にしてサービスを再起動し、Discord側でも対応するwatchを明示的に有効化してください。

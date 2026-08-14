@@ -91,7 +91,7 @@ describe("conditional source fetch", () => {
 });
 
 describe("source adapter registry", () => {
-  it("keeps staged Meta and Qwen sources disabled by default", () => {
+  it("keeps staged and terms-review sources disabled by default", () => {
     expect(createSourceAdapters().map((adapter) => adapter.id)).toEqual([
       "lmarena",
       "swebench",
@@ -104,12 +104,19 @@ describe("source adapter registry", () => {
     ]);
   });
 
-  it("enables staged sources independently", () => {
-    const ids = createSourceAdapters({ enableMeta: true, enableQwen: true }).map(
+  it("enables staged and terms-review sources independently", () => {
+    const ids = createSourceAdapters({
+      enableMeta: true,
+      enableQwen: true,
+      enableZai: true,
+      enableMoonshot: true
+    }).map(
       (adapter) => adapter.id
     );
     expect(ids).toContain("meta");
     expect(ids).toContain("qwen");
+    expect(ids).toContain("zai");
+    expect(ids).toContain("moonshot");
     expect(createSourceAdapters().every((adapter) => adapter.targets.length > 0)).toBe(true);
   });
 });

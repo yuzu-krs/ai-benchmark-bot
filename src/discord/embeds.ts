@@ -27,6 +27,8 @@ const SOURCE_LABELS: Record<SourceId, string> = {
   mistral: "Mistral AI",
   xai: "xAI",
   deepseek: "DeepSeek",
+  zai: "Z.ai",
+  moonshot: "Moonshot AI / Kimi",
   meta: "Meta AI",
   qwen: "Qwen"
 };
@@ -41,6 +43,8 @@ const OFFICIAL_URLS: Record<SourceId, string> = {
   mistral: "https://mistral.ai/news",
   xai: "https://docs.x.ai/developers/release-notes",
   deepseek: "https://api-docs.deepseek.com/updates",
+  zai: "https://docs.z.ai/release-notes/new-released",
+  moonshot: "https://platform.kimi.ai/docs/models",
   meta: "https://ai.meta.com/blog/",
   qwen: "https://qwen.ai/research"
 };
@@ -54,6 +58,7 @@ const LEADERBOARD_URLS: Record<LeaderboardId, string> = {
 
 const EVENT_LABELS: Record<EventType, string> = {
   "provider.model_announced": "新モデル発表",
+  "provider.model_available": "公式モデル一覧への追加",
   "provider.announcement_candidate": "モデル発表候補（要確認）",
   "benchmark.entity_first_seen": "ベンチマーク初登場",
   "benchmark.entity_removed": "ランキング掲載終了",
@@ -90,6 +95,8 @@ function eventDescription(event: DomainEvent): string {
   switch (event.type) {
     case "provider.model_announced":
       return `**${truncate(entity, 240)}** が公式に発表されました。`;
+    case "provider.model_available":
+      return `**${truncate(entity, 240)}** が公式モデル一覧へ追加されました。`;
     case "provider.announcement_candidate":
       return `**${truncate(entity, 240)}** は新モデルの可能性があります。日次確認対象として記録しました。`;
     case "benchmark.entity_first_seen":

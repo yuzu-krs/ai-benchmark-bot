@@ -7,6 +7,8 @@ export const SOURCE_IDS = [
   "mistral",
   "xai",
   "deepseek",
+  "zai",
+  "moonshot",
   "meta",
   "qwen"
 ] as const;
@@ -29,6 +31,8 @@ export const WATCH_TARGETS = [
   "provider-mistral",
   "provider-xai",
   "provider-deepseek",
+  "provider-zai",
+  "provider-moonshot",
   "provider-meta",
   "provider-qwen"
 ] as const;
@@ -37,6 +41,7 @@ export type WatchTargetId = (typeof WATCH_TARGETS)[number];
 
 export const EVENT_TYPES = [
   "provider.model_announced",
+  "provider.model_available",
   "provider.announcement_candidate",
   "benchmark.entity_first_seen",
   "benchmark.entity_removed",
@@ -101,6 +106,7 @@ export interface AnnouncementItem {
   stage: ReleaseStage;
   confidence: "confirmed" | "candidate";
   modality: "text" | "multimodal_text" | "coding" | "agent" | "unknown";
+  eventKind?: "announcement" | "availability";
 }
 
 export interface AnnouncementSnapshot {

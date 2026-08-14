@@ -212,7 +212,7 @@ export class BenchmarkBotController {
     if (enabled && this.options.inactiveTargets?.includes(target)) {
       await replyError(
         interaction,
-        "この段階導入adapterは環境設定で停止中です。有効化フラグを設定してBotを再起動してください。"
+        "このadapterは環境設定で停止中です。利用条件を確認して有効化フラグを設定し、Botを再起動してください。"
       );
       return;
     }
