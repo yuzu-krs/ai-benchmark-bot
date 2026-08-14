@@ -1,0 +1,159 @@
+[
+  {
+    "name": "Anthropic model launch",
+    "title": "We've launched Claude Opus 5 (claude-opus-5)",
+    "summary": "Claude Opus 5 is our new language model for complex reasoning.",
+    "hints": ["claude-opus-5"],
+    "expected": "confirmed",
+    "modality": "text"
+  },
+  {
+    "name": "Anthropic managed agent budget",
+    "title": "You can now set a budget on a Claude Managed Agents session",
+    "summary": "The budget is a hard cap on session spend at public list rates.",
+    "expected": null
+  },
+  {
+    "name": "Anthropic GET endpoint",
+    "title": "The GET /v1/environments/{id}/work endpoint is now available",
+    "summary": "It lists pending work for a self-hosted sandbox on Claude Platform.",
+    "expected": null
+  },
+  {
+    "name": "Anthropic tokenizer update",
+    "title": "Claude Fable 5 and Claude Mythos 5 use a new tokenizer",
+    "summary": "The tokenizer changes token counts compared with Claude Opus 4.7.",
+    "hints": ["claude-fable-5", "claude-mythos-5"],
+    "expected": null
+  },
+  {
+    "name": "Anthropic feature on existing model",
+    "title": "We've launched task budgets in beta on Claude Opus 4.7",
+    "summary": "The budget parameter controls a full agentic loop.",
+    "hints": ["claude-opus-4-7"],
+    "expected": null
+  },
+  {
+    "name": "xAI model launch",
+    "title": "Grok 4.6",
+    "summary": "Grok 4.6, xAI's frontier model for coding, is now available on the xAI API.",
+    "expected": "confirmed",
+    "modality": "coding"
+  },
+  {
+    "name": "xAI tools GA",
+    "title": "Tools are now generally available",
+    "summary": "The search and code execution tools have graduated from beta on the xAI API.",
+    "expected": null
+  },
+  {
+    "name": "xAI API public beta",
+    "title": "Files API public beta",
+    "summary": "The Files API endpoint is now available to developers.",
+    "expected": null
+  },
+  {
+    "name": "product launch mentioning explicit model id",
+    "title": "Prompt caching and Batch API launch",
+    "summary": "We launched prompt caching and the Batch API for Model: gpt-5.7-preview.",
+    "explicit": ["gpt-5.7-preview"],
+    "expected": null
+  },
+  {
+    "name": "Google image-only family",
+    "title": "Gemini 3.1 Flash Image is generally available",
+    "summary": "gemini-3.1-flash-image is our native visual image model for image generation.",
+    "hints": ["gemini-3.1-flash-image"],
+    "expected": null
+  },
+  {
+    "name": "Google video-generation multimodal family",
+    "title": "Gemini Omni Flash in public preview",
+    "summary": "We launched a multimodal model for video generation from text descriptions and visual prompts.",
+    "hints": ["gemini-omni-flash-preview"],
+    "expected": null
+  },
+  {
+    "name": "Google display-name image family",
+    "title": "Launched Nano Banana 2, Gemini 3.1 Flash Image Preview",
+    "summary": "A high-efficiency model optimized for high-volume visual creation.",
+    "expected": null
+  },
+  {
+    "name": "Google audio-to-audio family",
+    "title": "Released gemini-3.1-flash-live-preview",
+    "summary": "The latest audio-to-audio model for real-time dialogue and voice-first applications.",
+    "hints": ["gemini-3.1-flash-live-preview"],
+    "expected": null
+  },
+  {
+    "name": "Google native audio output family",
+    "title": "Released gemini-2.5-flash-preview-native-audio-dialog",
+    "summary": "A new Gemini model with native audio output capabilities.",
+    "hints": ["gemini-2.5-flash-preview-native-audio-dialog"],
+    "expected": null
+  },
+  {
+    "name": "text-capable multimodal model launch",
+    "title": "Introducing Gemini 4 Pro",
+    "summary": "Gemini 4 Pro is a vision-language model accepting image input and returning text.",
+    "hints": ["gemini-4-pro"],
+    "expected": "confirmed",
+    "modality": "multimodal_text"
+  },
+  {
+    "name": "uncertain model article",
+    "title": "Gemini 4 model preview update",
+    "summary": "The model is being evaluated with selected developers; no launch was announced.",
+    "hints": ["gemini-4-preview"],
+    "expected": "candidate",
+    "modality": "text"
+  },
+  {
+    "name": "model deprecation",
+    "title": "We announced the deprecation of Claude Sonnet 4",
+    "summary": "claude-sonnet-4-20250514 will be retired next month.",
+    "hints": ["claude-sonnet-4-20250514"],
+    "expected": null
+  },
+  {
+    "name": "feature support on an existing model",
+    "title": "Grounding with Maps is now supported for Gemini 3 models",
+    "summary": "The feature will be enabled going forward.",
+    "expected": null
+  },
+  {
+    "name": "model alias redirect",
+    "title": "Changed the latest Gemini aliases",
+    "summary": "gemini-pro-latest now redirects to gemini-3-pro-preview.",
+    "hints": ["gemini-3-pro-preview"],
+    "expected": null
+  },
+  {
+    "name": "Qwen reinforcement learning method paper",
+    "title": "SAPO: A Stable Reinforcement Learning Method",
+    "summary": "A research method for training large language models.",
+    "expected": null
+  },
+  {
+    "name": "Qwen embedding and reranking model",
+    "title": "Qwen3 Embedding",
+    "summary": "We release Qwen3 Embedding, a new model for text embedding, retrieval, and reranking.",
+    "hints": ["qwen3-embedding"],
+    "expected": null
+  },
+  {
+    "name": "Qwen drawing model",
+    "title": "Introducing Qwen VLo",
+    "summary": "A native visual model for drawing and image output.",
+    "expected": null
+  },
+  {
+    "name": "Qwen text-output omni model",
+    "title": "Introducing Qwen3-Omni",
+    "summary": "A vision-language model that accepts text, images, audio, and video and returns text.",
+    "hints": ["qwen3-omni"],
+    "expected": "confirmed",
+    "modality": "multimodal_text"
+  }
+]

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>Claude Platform release notes</title>
+  <item>
+    <title>Claude Platform release notes — August 10, 2026</title>
+    <link>https://platform.claude.com/docs/en/release-notes/overview#august-10-2026</link>
+    <guid>anthropic-2026-08-10</guid>
+    <pubDate>Mon, 10 Aug 2026 00:00:00 GMT</pubDate>
+    <description><![CDATA[
+      <ul>
+        <li>The console now has a redesigned settings page.</li>
+        <li>We announced <code>claude-4-2-sonnet</code>, a new language model now available on the Claude API.</li>
+      </ul>
+    ]]></description>
+  </item>
+</channel></rss>

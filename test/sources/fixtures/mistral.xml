@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>Mistral AI Blog</title>
+  <item>
+    <title>Introducing Codestral 2</title>
+    <link>https://mistral.ai/news/codestral-2/</link>
+    <guid>https://mistral.ai/news/codestral-2/</guid>
+    <description>Codestral 2 is our new open-weights coding model.</description>
+    <pubDate>Tue, 11 Aug 2026 12:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>Studio gets a new settings page</title>
+    <link>https://mistral.ai/news/studio-settings/</link>
+    <guid>https://mistral.ai/news/studio-settings/</guid>
+    <description>A product administration update.</description>
+    <pubDate>Mon, 10 Aug 2026 12:00:00 GMT</pubDate>
+  </item>
+</channel></rss>

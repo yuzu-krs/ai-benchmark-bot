@@ -1,0 +1,40 @@
+{
+  "name": "ai-benchmark-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Discord bot that monitors AI benchmark rankings and official model announcements.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.17.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "cli": "tsx src/cli.ts",
+    "commands:register": "tsx src/cli.ts register-commands",
+    "db:migrate": "tsx src/cli.ts migrate",
+    "db:backup": "tsx src/cli.ts backup",
+    "doctor": "tsx src/cli.ts doctor",
+    "sources:check": "tsx src/cli.ts check-sources",
+    "contracts:check-staged": "tsx src/cli.ts check-staged-contracts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "cheerio": "1.2.0",
+    "discord.js": "14.27.0",
+    "dotenv": "17.2.3",
+    "drizzle-orm": "1.0.0-rc.4",
+    "fast-xml-parser": "5.10.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "drizzle-kit": "1.0.0-rc.4",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

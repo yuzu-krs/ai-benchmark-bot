@@ -1,0 +1,26 @@
+[Unit]
+Description=Check staged AI Benchmark Bot source contracts
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ai-benchmark-bot
+Group=ai-benchmark-bot
+WorkingDirectory=/opt/ai-benchmark-bot
+EnvironmentFile=/etc/ai-benchmark-bot.env
+ExecStart=/usr/bin/node /opt/ai-benchmark-bot/dist/cli.js check-staged-contracts
+StateDirectory=ai-benchmark-bot
+StateDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native

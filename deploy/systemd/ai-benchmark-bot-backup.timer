@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily AI Benchmark Bot SQLite backup at 03:30 JST
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Tokyo
+Persistent=true
+Unit=ai-benchmark-bot-backup.service
+
+[Install]
+WantedBy=timers.target

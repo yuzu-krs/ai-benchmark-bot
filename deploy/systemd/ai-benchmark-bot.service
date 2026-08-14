@@ -1,0 +1,40 @@
+[Unit]
+Description=AI Benchmark Discord Bot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ai-benchmark-bot
+Group=ai-benchmark-bot
+WorkingDirectory=/opt/ai-benchmark-bot
+EnvironmentFile=/etc/ai-benchmark-bot.env
+ExecStartPre=/usr/bin/node /opt/ai-benchmark-bot/dist/cli.js doctor
+ExecStartPre=/usr/bin/node /opt/ai-benchmark-bot/dist/cli.js migrate
+ExecStart=/usr/bin/node /opt/ai-benchmark-bot/dist/index.js
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=90s
+KillSignal=SIGTERM
+
+# systemd creates /var/lib/ai-benchmark-bot and keeps it writable under ProtectSystem.
+StateDirectory=ai-benchmark-bot
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

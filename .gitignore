@@ -1,0 +1,56 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+
+# Local secrets and credentials
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+!*.env.example
+.dev.vars
+.dev.vars.*
+.npmrc
+secrets/
+.secrets/
+credentials/
+*.secret
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime data and backups
+data/
+backups/
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.log
+*.bak
+*.tmp
+
+# Editor and operating-system files
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test reports and package-manager logs
+test-results/
+junit.xml
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

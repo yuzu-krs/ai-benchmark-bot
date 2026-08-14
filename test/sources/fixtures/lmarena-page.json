@@ -1,0 +1,37 @@
+{
+  "rows": [
+    {
+      "row_idx": 0,
+      "row": {
+        "model_name": "model-alpha",
+        "organization": "Example AI",
+        "license": "Proprietary",
+        "rating": 1450.49,
+        "rating_lower": 1440.1,
+        "rating_upper": 1460.8,
+        "variance": 4.2,
+        "vote_count": 1200,
+        "rank": 1,
+        "category": "overall",
+        "leaderboard_publish_date": "2026-08-12"
+      },
+      "truncated_cells": []
+    },
+    {
+      "row_idx": 1,
+      "row": {
+        "model_name": "model-beta",
+        "organization": "Example Labs",
+        "license": "Apache-2.0",
+        "rating": 1442.8,
+        "rank": 2,
+        "category": "overall",
+        "leaderboard_publish_date": "2026-08-12"
+      },
+      "truncated_cells": []
+    }
+  ],
+  "num_rows_total": 2,
+  "num_rows_per_page": 100,
+  "partial": false
+}
