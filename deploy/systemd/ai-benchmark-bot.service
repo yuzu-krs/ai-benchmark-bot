@@ -9,12 +9,10 @@ User=ai-benchmark-bot
 Group=ai-benchmark-bot
 WorkingDirectory=/opt/ai-benchmark-bot
 EnvironmentFile=/etc/ai-benchmark-bot.env
-ExecStartPre=/usr/bin/node /opt/ai-benchmark-bot/dist/cli.js doctor
-ExecStartPre=/usr/bin/node /opt/ai-benchmark-bot/dist/cli.js migrate
 ExecStart=/usr/bin/node /opt/ai-benchmark-bot/dist/index.js
 Restart=on-failure
 RestartSec=10s
-TimeoutStopSec=90s
+TimeoutStopSec=30s
 KillSignal=SIGTERM
 
 # systemd creates /var/lib/ai-benchmark-bot and keeps it writable under ProtectSystem.

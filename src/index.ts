@@ -1,93 +1,47 @@
-import { AppScheduler } from "./application/scheduler.js";
-import { loadConfig, requireDiscordConfig } from "./core/config.js";
-import { createLogger, errorFields } from "./core/logger.js";
-import { requireSupportedNodeVersion } from "./core/runtime.js";
-import { localDateKey } from "./core/time.js";
-import { createStore } from "./db/index.js";
-import { createDiscordRuntime } from "./discord/index.js";
-import { createSourceAdapters } from "./sources/index.js";
-import {
-  REQUIRED_STAGED_CONTRACT_DAYS,
-  STAGED_CONTRACT_VERSION
-} from "./sources/staged.js";
+import { loadConfig, requireRuntimeConfig } from "./config.js";
+import { DiscordNotifier } from "./discord.js";
+import { createLogger } from "./logger.js";
+import { Scheduler } from "./scheduler.js";
+import { StateStore } from "./state.js";
 
 async function main(): Promise<void> {
-  requireSupportedNodeVersion();
   const config = loadConfig();
-  const discordConfig = requireDiscordConfig(config);
   const logger = createLogger(config.logLevel);
-  const store = createStore(config.databasePath);
-  const contractDate = localDateKey(new Date(), config.timeZone);
-  const metaStreak = store.getAdapterContractStreak(
-    "meta",
-    contractDate,
-    STAGED_CONTRACT_VERSION
-  );
-  const qwenStreak = store.getAdapterContractStreak(
-    "qwen",
-    contractDate,
-    STAGED_CONTRACT_VERSION
-  );
-  const enableMeta = config.enableMeta && metaStreak >= REQUIRED_STAGED_CONTRACT_DAYS;
-  const enableQwen = config.enableQwen && qwenStreak >= REQUIRED_STAGED_CONTRACT_DAYS;
-  if (config.enableMeta && !enableMeta) {
-    logger.warn("Meta adapter remains disabled until its contract gate passes", {
-      streak: metaStreak,
-      requiredDays: REQUIRED_STAGED_CONTRACT_DAYS
-    });
-  }
-  if (config.enableQwen && !enableQwen) {
-    logger.warn("Qwen adapter remains disabled until its contract gate passes", {
-      streak: qwenStreak,
-      requiredDays: REQUIRED_STAGED_CONTRACT_DAYS
-    });
-  }
-  const runtimeConfig = { ...config, enableMeta, enableQwen };
-  const adapters = createSourceAdapters({
-    enableMeta,
-    enableQwen,
-    enableZai: config.enableZai,
-    enableMoonshot: config.enableMoonshot
-  });
-  store.syncActiveSources(
-    adapters.map((adapter) => adapter.id),
-    new Date().toISOString()
-  );
-  const discord = createDiscordRuntime({ config: runtimeConfig, store, logger });
-  const scheduler = new AppScheduler({
-    adapters,
-    config: runtimeConfig,
-    store,
-    guildId: discordConfig.discordGuildId,
-    logger,
-    pumpDeliveries: () => discord.pumpDeliveries()
-  });
+  const runtime = requireRuntimeConfig(config);
+  const store = new StateStore(config.dataDir);
+  const notifier = new DiscordNotifier(runtime.discordToken);
+  const send = (embed: Parameters<DiscordNotifier["sendEmbed"]>[1]) =>
+    notifier.sendEmbed(runtime.discordChannelId, embed);
 
-  let shuttingDown = false;
-  const shutdown = async (signal: string) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    logger.info("shutdown requested", { signal });
-    await scheduler.stopAndWait();
-    await discord.stop();
-    store.close();
-    logger.info("shutdown completed");
-  };
-
-  process.once("SIGINT", () => void shutdown("SIGINT"));
-  process.once("SIGTERM", () => void shutdown("SIGTERM"));
-
-  await discord.start();
+  const scheduler = new Scheduler({ config, store, logger, send });
   scheduler.start();
   logger.info("AI benchmark bot started", {
-    guildId: discordConfig.discordGuildId,
-    sourceCount: adapters.length,
-    databasePath: config.databasePath
+    channel: runtime.discordChannelId,
+    dataDir: config.dataDir,
+    timeZone: config.timeZone,
+    digestAt: `${String(config.digestHour).padStart(2, "0")}:${String(config.digestMinute).padStart(2, "0")}`,
+    alertPollMinutes: config.alertPollMinutes
   });
+
+  let stopping = false;
+  const shutdown = (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    logger.info("shutting down", { signal });
+    void scheduler.stop().then(() => process.exit(0));
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
-main().catch((error) => {
-  const logger = createLogger("error");
-  logger.error("fatal startup error", errorFields(error));
-  process.exitCode = 1;
+main().catch((error: unknown) => {
+  console.error(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: "error",
+      message: "bot failed to start",
+      errorMessage: error instanceof Error ? error.message : String(error)
+    })
+  );
+  process.exit(1);
 });

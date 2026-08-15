@@ -1,0 +1,42 @@
+{
+  "features": [
+    { "name": "model_name", "type": { "dtype": "string", "_type": "Value" } },
+    { "name": "organization", "type": { "dtype": "string", "_type": "Value" } },
+    { "name": "license", "type": { "dtype": "string", "_type": "Value" } },
+    { "name": "rating", "type": { "dtype": "float64", "_type": "Value" } },
+    { "name": "vote_count", "type": { "dtype": "int64", "_type": "Value" } },
+    { "name": "rank", "type": { "dtype": "int64", "_type": "Value" } },
+    { "name": "leaderboard_publish_date", "type": { "dtype": "string", "_type": "Value" } }
+  ],
+  "rows": [
+    {
+      "row_idx": 0,
+      "row": {
+        "model_name": "model-gamma",
+        "organization": "Example AI",
+        "license": "Proprietary",
+        "rating": 1382.71,
+        "vote_count": 840,
+        "rank": 1,
+        "leaderboard_publish_date": "2026-08-12"
+      },
+      "truncated_cells": []
+    },
+    {
+      "row_idx": 1,
+      "row": {
+        "model_name": "model-delta",
+        "organization": "Example Labs",
+        "license": "MIT",
+        "rating": 1371.05,
+        "vote_count": 610,
+        "rank": 2,
+        "leaderboard_publish_date": "2026-08-12"
+      },
+      "truncated_cells": []
+    }
+  ],
+  "num_rows_total": 2,
+  "num_rows_per_page": 100,
+  "partial": false
+}
