@@ -5,7 +5,7 @@
   "description": "Discord bot that posts a daily LMArena ranking and new-model alerts.",
   "type": "module",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=24.18.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
