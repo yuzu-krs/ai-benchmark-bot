@@ -1,18 +1,17 @@
 import { buildDailyRankingEmbed, compareWithPrevious, type BoardView } from "./embeds.js";
 import { errorFields, type Logger } from "./logger.js";
-import { fetchLmArenaTop, type LmArenaBoard } from "./lmarena.js";
+import { fetchLmArenaTop, LMARENA_BOARDS, type LmArenaBoard } from "./lmarena.js";
 import type { StateStore } from "./state.js";
 import { localDateKey } from "./time.js";
 import type { EmbedPayload, RankedModel } from "./types.js";
 
-const BOARDS: ReadonlyArray<{
-  board: LmArenaBoard;
-  title: string;
-  emoji: string;
-}> = [
-  { board: "overall", title: "LMArena Overall", emoji: "🏆" },
-  { board: "coding", title: "LMArena Coding", emoji: "💻" }
-];
+// Presentation only: board identity and display names come from LMARENA_BOARDS.
+const BOARD_PRESENTATION: Readonly<Record<LmArenaBoard, { emoji: string }>> = {
+  overall: { emoji: "🏆" },
+  coding: { emoji: "💻" }
+};
+
+const BOARDS: ReadonlyArray<LmArenaBoard> = ["overall", "coding"];
 
 export interface RankingDeps {
   timeZone: string;
@@ -20,6 +19,7 @@ export interface RankingDeps {
   logger: Logger;
   send(embed: EmbedPayload): Promise<void>;
   fetchFn?: typeof globalThis.fetch;
+  huggingFaceToken?: string;
   now?: () => Date;
 }
 
@@ -38,31 +38,42 @@ export async function runDailyRanking(deps: RankingDeps): Promise<RankingResult>
   const now = deps.now?.() ?? new Date();
   const dateKey = localDateKey(now, deps.timeZone);
   const results = await Promise.allSettled(
-    BOARDS.map(({ board }) => fetchLmArenaTop(board, { fetchFn: deps.fetchFn }))
+    BOARDS.map((board) =>
+      fetchLmArenaTop(board, {
+        fetchFn: deps.fetchFn,
+        ...(deps.logger ? { logger: deps.logger } : {}),
+        ...(deps.huggingFaceToken ? { token: deps.huggingFaceToken } : {})
+      })
+    )
   );
 
   const views: BoardView[] = [];
   const succeeded: Array<{ board: LmArenaBoard; entries: RankedModel[] }> = [];
   const boards: Record<LmArenaBoard, "ok" | "failed"> = { overall: "failed", coding: "failed" };
   results.forEach((result, index) => {
-    const definition = BOARDS[index];
-    if (!definition) return;
+    const board = BOARDS[index];
+    if (!board) return;
+    const spec = LMARENA_BOARDS[board];
     if (result.status === "fulfilled") {
-      boards[definition.board] = "ok";
-      const previous = deps.store.loadRanking(definition.board);
+      boards[board] = "ok";
+      const previous = deps.store.loadRanking(board);
       views.push({
-        board: definition.board,
-        title: definition.title,
-        emoji: definition.emoji,
+        board,
+        title: spec.displayName,
+        emoji: BOARD_PRESENTATION[board].emoji,
         entries: compareWithPrevious(result.value, previous)
       });
-      succeeded.push({ board: definition.board, entries: result.value });
+      succeeded.push({ board, entries: result.value });
     } else {
       deps.logger.error("ranking fetch failed", {
-        board: definition.board,
+        leaderboard: spec.leaderboardId,
         ...errorFields(result.reason)
       });
-      views.push({ board: definition.board, title: definition.title, emoji: definition.emoji });
+      views.push({
+        board,
+        title: spec.displayName,
+        emoji: BOARD_PRESENTATION[board].emoji
+      });
     }
   });
 

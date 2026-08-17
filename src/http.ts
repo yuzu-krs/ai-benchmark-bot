@@ -4,11 +4,13 @@ const USER_AGENT = "ai-benchmark-bot/1.0";
 
 export class HttpError extends Error {
   readonly status?: number;
+  readonly bodyExcerpt?: string;
 
-  constructor(url: string, status?: number) {
+  constructor(url: string, status?: number, bodyExcerpt?: string) {
     super(status === undefined ? `Source request failed for ${url}` : `Source request failed (${status}) for ${url}`);
     this.name = "HttpError";
     this.status = status;
+    this.bodyExcerpt = bodyExcerpt;
   }
 }
 
@@ -34,7 +36,16 @@ export async function fetchText(url: string, options: FetchTextOptions = {}): Pr
     redirect: "follow",
     signal: AbortSignal.timeout(timeoutMs)
   });
-  if (!response.ok) throw new HttpError(url, response.status);
+  if (!response.ok) {
+    let bodyExcerpt: string | undefined;
+    try {
+      const body = await response.text();
+      bodyExcerpt = body.length > 0 ? body.slice(0, 300) : undefined;
+    } catch {
+      // A body read failure must not mask the original HTTP status.
+    }
+    throw new HttpError(url, response.status, bodyExcerpt);
+  }
 
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const declaredLength = Number(response.headers.get("content-length"));

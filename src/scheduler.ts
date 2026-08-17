@@ -83,6 +83,9 @@ export class Scheduler {
         logger: this.#deps.logger,
         send: this.#deps.send,
         fetchFn: this.#deps.fetchFn,
+        ...(this.#deps.config.huggingFaceToken
+          ? { huggingFaceToken: this.#deps.config.huggingFaceToken }
+          : {}),
         ...(this.#deps.now ? { now: this.#deps.now } : {}),
       });
     } catch (error) {

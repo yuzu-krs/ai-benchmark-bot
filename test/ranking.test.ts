@@ -23,7 +23,7 @@ function boardPage(names: string[]): unknown {
         organization: "Example AI",
         rating: 1500 - index * 7.3,
         rank: index + 1,
-        category: "overall",
+        category: "text",
         leaderboard_publish_date: "2026-08-12"
       },
       truncated_cells: []
@@ -174,7 +174,7 @@ describe("runDailyRanking", () => {
     const harness = createHarness([], []);
     harness.setResponse(
       "overall",
-      () => Promise.resolve(new Response("down", { status: 500 }))
+      () => Promise.resolve(new Response("down", { status: 404 }))
     );
     harness.setResponse(
       "coding",

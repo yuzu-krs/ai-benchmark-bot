@@ -31,13 +31,13 @@ function page(rows: Array<Record<string, unknown>>, total = rows.length): unknow
   };
 }
 
-function row(name: string, rank: number, rating: number): Record<string, unknown> {
+function row(name: string, rank: number, rating: number, category = "text"): Record<string, unknown> {
   return {
     model_name: name,
     organization: "Example AI",
     rating,
     rank,
-    category: "overall",
+    category,
     leaderboard_publish_date: "2026-08-12"
   };
 }
@@ -95,6 +95,7 @@ describe("fetchLmArenaTop", () => {
     expect(overall[0]).toMatchObject({ rank: 1, score: 1430, scoreDisplay: "1430" });
     expect(overall.map((entry) => entry.rank)).toEqual([1, 2, 3]);
     expect(captured[0]?.url).toContain("datasets-server.huggingface.co/filter");
+    expect(captured[0]?.url).toContain("%27text%27");
     expect(captured[0]?.url).toContain("length=100");
 
     const coding = await fetchLmArenaTop("coding", { fetchFn });
@@ -142,8 +143,87 @@ describe("fetchLmArenaTop", () => {
     });
   });
 
+  it("retries transient 5xx failures before falling back to the next key", async () => {
+    const warnings: Array<{ message: string; fields: Record<string, unknown> }> = [];
+    const capturingLogger = {
+      debug: () => undefined,
+      info: () => undefined,
+      error: () => undefined,
+      warn: (message: string, fields: Record<string, unknown> = {}) => {
+        warnings.push({ message, fields });
+      }
+    };
+    const urls: string[] = [];
+    let textAttempts = 0;
+    const fetchFn = (async (input: string | URL | Request) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes("%27text%27")) {
+        textAttempts += 1;
+        return new Response('{"error":"the dataset index is loading"}', { status: 500 });
+      }
+      return jsonResponse(page([row("model-a", 1, 1500, "overall")]));
+    }) as typeof fetch;
+
+    const entries = await fetchLmArenaTop("overall", {
+      fetchFn,
+      logger: capturingLogger,
+      retryDelayMs: 0
+    });
+    expect(entries.map((entry) => entry.name)).toEqual(["model-a"]);
+    // The transient key is retried up to three times, then the next key wins.
+    expect(textAttempts).toBe(3);
+    expect(urls.at(-1)).toContain("%27overall%27");
+    expect(warnings).toHaveLength(3);
+    expect(warnings[0]).toMatchObject({
+      message: "LMArena leaderboard fetch attempt failed",
+      fields: expect.objectContaining({
+        leaderboard: "lmarena-overall",
+        key: "text",
+        attempt: 1,
+        status: 500,
+        response: expect.stringContaining("index is loading")
+      })
+    });
+  });
+
+  it("recovers when a transient 500 clears on retry within the same key", async () => {
+    let calls = 0;
+    const fetchFn = (async () => {
+      calls += 1;
+      if (calls < 3) {
+        return new Response('{"error":"the dataset index is loading"}', { status: 500 });
+      }
+      return jsonResponse(page([row("model-a", 1, 1500)]));
+    }) as typeof fetch;
+
+    const entries = await fetchLmArenaTop("overall", { fetchFn, retryDelayMs: 0 });
+    expect(entries.map((entry) => entry.name)).toEqual(["model-a"]);
+    expect(calls).toBe(3);
+  });
+
+  it("falls back to the next category key when a key returns no rows", async () => {
+    const fetchFn = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("%27text%27")) return jsonResponse(page([]));
+      return jsonResponse(page([row("model-a", 1, 1500, "overall")]));
+    }) as typeof fetch;
+
+    const entries = await fetchLmArenaTop("overall", { fetchFn });
+    expect(entries.map((entry) => entry.name)).toEqual(["model-a"]);
+  });
+
+  it("reports every attempted key when all candidates fail", async () => {
+    const fetchFn = (async () => new Response("not found", { status: 404 })) as typeof fetch;
+    await expect(fetchLmArenaTop("overall", { fetchFn })).rejects.toThrow(
+      /leaderboard=lmarena-overall tried keys \[text, overall\]/
+    );
+  });
+
   it("propagates HTTP failures so the board can be reported as unavailable", async () => {
     const fetchFn = (async () => new Response("boom", { status: 500 })) as typeof fetch;
-    await expect(fetchLmArenaTop("overall", { fetchFn })).rejects.toThrow(/500/);
+    await expect(
+      fetchLmArenaTop("overall", { fetchFn, retryDelayMs: 0 })
+    ).rejects.toThrow(/500/);
   });
 });
