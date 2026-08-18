@@ -23,7 +23,7 @@ function boardPage(names: string[]): unknown {
         organization: "Example AI",
         rating: 1500 - index * 7.3,
         rank: index + 1,
-        category: "text",
+        category: "overall",
         leaderboard_publish_date: "2026-08-12"
       },
       truncated_cells: []
@@ -65,7 +65,7 @@ function createHarness(overallNames: string[], codingNames: string[]): Harness {
     },
     fetchFn: (async (input: string | URL | Request) => {
       const url = String(input);
-      const key = url.includes("/filter") ? "overall" : "coding";
+      const key = url.includes("config=text_style_control") ? "overall" : "coding";
       const responder = responses.get(key);
       if (!responder) throw new Error(`unexpected url: ${url}`);
       return responder();

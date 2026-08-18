@@ -16,10 +16,20 @@ export interface LmArenaBoardSpec {
   readonly leaderboardId: string;
   /** Discord display name, e.g. `LMArena Overall`. */
   readonly displayName: string;
-  /** Source-specific fetch identity, decoupled from ids and display names. */
+  /**
+   * Source-specific fetch identity, decoupled from ids and display names.
+   * Every board reads the /rows endpoint: /filter needs a server-side
+   * dataset index that has stayed unavailable ("Unexpected error." /
+   * "dataset index is loading") for a day or more on this dataset, while
+   * /rows serves the same data straight from parquet.
+   */
   readonly fetch:
-    | { readonly endpoint: "filter"; readonly categoryKeys: readonly string[] }
-    | { readonly endpoint: "rows"; readonly config: string };
+    | { readonly kind: "config"; readonly config: string }
+    | {
+        readonly kind: "category";
+        readonly config: string;
+        readonly categoryKeys: readonly string[];
+      };
 }
 
 /**
@@ -31,26 +41,30 @@ export const LMARENA_BOARDS: Readonly<Record<LmArenaBoard, LmArenaBoardSpec>> = 
     board: "overall",
     leaderboardId: "lmarena-overall",
     displayName: "LMArena Overall",
-    // Candidate keys are tried in order; an HTTP error or an empty result
-    // falls through to the next key. Upstream has been seen serving transient
-    // 500s ("dataset index is loading") and renaming category values, so the
-    // newest key comes first with the established one as fallback.
-    fetch: { endpoint: "filter", categoryKeys: ["text", "overall"] }
+    // Category rows are picked client-side from /rows pages. Upstream has
+    // renamed category values before ("text" no longer exists in this
+    // config; "overall" is current), so candidates are tried in priority
+    // order against the same fetched rows and a rename costs no extra
+    // requests. Pages arrive grouped by category and rank-ascending within
+    // each group, so paging stops once one key collected enough rows.
+    fetch: { kind: "category", config: "text_style_control", categoryKeys: ["overall", "text"] }
   },
   coding: {
     board: "coding",
     leaderboardId: "lmarena-coding",
     displayName: "LMArena Coding",
-    fetch: { endpoint: "rows", config: "webdev" }
+    fetch: { kind: "config", config: "webdev" }
   }
 };
 
 const DATASET_ID = "lmarena-ai/leaderboard-dataset";
 export const LMARENA_DATASET_URL = `https://huggingface.co/datasets/${DATASET_ID}`;
-/** Only the first page is fetched: the TOP10 display never needs deeper pages. */
+/** Only the first pages are fetched: the TOP10 display never needs deeper pages. */
 const PAGE_SIZE = 100;
 const PAGE_TIMEOUT_MS = 60_000;
 const PAGE_MAX_BYTES = 4 * 1024 * 1024;
+/** Safety cap on /rows pages walked while looking for a category group. */
+const MAX_CATEGORY_PAGES = 5;
 
 const arenaRowSchema = z
   .object({
@@ -60,14 +74,15 @@ const arenaRowSchema = z
     rating: z.number().finite(),
     vote_count: z.number().finite().nonnegative().optional(),
     rank: z.number().int().positive(),
-    // The /rows endpoint (webdev config) has no server-side category filter,
-    // so only /filter pages validate this column.
+    // Only category boards read this. Both configs expose a category column —
+    // webdev's groups even include an "overall" value that collides with the
+    // overall board's key — so config boards must never be category-filtered.
     category: z.string().trim().min(1).optional(),
     leaderboard_publish_date: z.string().trim().min(1)
   })
   .passthrough();
 
-const filterPageSchema = z
+const rowsPageSchema = z
   .object({
     rows: z.array(
       z
@@ -85,31 +100,11 @@ const filterPageSchema = z
 
 export type LmArenaRow = z.infer<typeof arenaRowSchema>;
 
-export function parseLmArenaFilterPage(payload: unknown, category: string): {
-  rows: LmArenaRow[];
-  total: number;
-} {
-  const page = parseLmArenaPagePayload(payload);
-  for (const row of page.rows) {
-    if (row.category !== category) {
-      throw new Error(`LMArena category mismatch: expected ${category}, received ${row.category}`);
-    }
-  }
-  return page;
-}
-
 export function parseLmArenaRowsPage(payload: unknown): {
   rows: LmArenaRow[];
   total: number;
 } {
-  return parseLmArenaPagePayload(payload);
-}
-
-function parseLmArenaPagePayload(payload: unknown): {
-  rows: LmArenaRow[];
-  total: number;
-} {
-  const parsed = filterPageSchema.parse(payload);
+  const parsed = rowsPageSchema.parse(payload);
   if (parsed.partial === true) throw new Error("LMArena returned a partial dataset response");
   return { rows: parsed.rows.map(({ row }) => row), total: parsed.num_rows_total };
 }
@@ -119,11 +114,11 @@ export interface FetchLmArenaOptions {
   token?: string;
   fetchFn?: typeof globalThis.fetch;
   logger?: Logger;
-  /** Delay between retries of transient (5xx/timeout) failures. */
+  /** Delay between retries of transient (5xx/429/timeout) failures. */
   retryDelayMs?: number;
 }
 
-/** Total transport attempts per key before giving up on that key. */
+/** Total transport attempts per page before giving up on the board. */
 const MAX_TRANSPORT_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAY_MS = 5_000;
 
@@ -160,40 +155,13 @@ export async function fetchLmArenaTop(
     retryDelayMs
   };
 
-  if (spec.fetch.endpoint === "rows") {
-    const url = rowsUrl(spec.fetch.config);
-    const text = await fetchPageText(url, `config=${spec.fetch.config}`, transport);
+  if (spec.fetch.kind === "config") {
+    const url = rowsUrl(spec.fetch.config, 0);
+    const text = await fetchPageText(url, transport);
     const page = parseLmArenaRowsPage(parseJson(text, spec.leaderboardId));
-    return collectTop(page, topN, spec, `config=${spec.fetch.config}`);
+    return collectTop(page.rows, topN, spec, `config=${spec.fetch.config}`);
   }
-
-  const attempts: string[] = [];
-  for (const key of spec.fetch.categoryKeys) {
-    const url = filterUrl(key);
-    try {
-      const text = await fetchPageText(url, `key=${key}`, { ...transport, key });
-      const page = parseLmArenaFilterPage(parseJson(text, spec.leaderboardId), key);
-      if (page.rows.length === 0) {
-        throw new Error(`category key '${key}' returned no rows`);
-      }
-      return collectTop(page, topN, spec, `key=${key}`);
-    } catch (error) {
-      attempts.push(describeAttempt(key, url.toString(), error));
-      // Transport failures were already logged (and retried) inside
-      // fetchPageText; only parse/validation problems are logged here.
-      if (!isTransportError(error)) {
-        options.logger?.warn("LMArena leaderboard fetch attempt failed", {
-          leaderboard: spec.leaderboardId,
-          key,
-          url: url.toString(),
-          ...describeError(error)
-        });
-      }
-    }
-  }
-  throw new Error(
-    `LMArena leaderboard fetch failed: leaderboard=${spec.leaderboardId} tried keys [${spec.fetch.categoryKeys.join(", ")}]; ${attempts.join(" | ")}`
-  );
+  return fetchCategoryTop(spec, topN, transport);
 }
 
 interface TransportOptions {
@@ -205,16 +173,69 @@ interface TransportOptions {
   };
   logger?: Logger;
   leaderboard: string;
-  key?: string;
   retryDelayMs: number;
 }
 
 /**
- * Fetches one page, retrying transient failures (5xx / timeout). The HF
- * datasets-server intermittently answers 500 "dataset index is loading"
- * while a cold query warms up; a short retry covers it within one fetch.
+ * Pages through /rows collecting rows of the wanted categories. Rows arrive
+ * grouped by category and rank-ascending within each group, so a key's TOP N
+ * is complete once N of its rows have been seen; keys beyond the page cap
+ * that never appeared fall through to the next candidate.
  */
-async function fetchPageText(url: URL, keyLabel: string, transport: TransportOptions): Promise<string> {
+async function fetchCategoryTop(
+  spec: LmArenaBoardSpec,
+  topN: number,
+  transport: TransportOptions
+): Promise<RankedModel[]> {
+  if (spec.fetch.kind !== "category") throw new Error("fetchCategoryTop requires a category board");
+  const { config, categoryKeys } = spec.fetch;
+  const counts = new Map<string, number>();
+  const collected: LmArenaRow[] = [];
+  let offset = 0;
+  let total = Number.POSITIVE_INFINITY;
+  for (let pageNumber = 1; pageNumber <= MAX_CATEGORY_PAGES && offset < total; pageNumber += 1) {
+    const text = await fetchPageText(rowsUrl(config, offset), transport);
+    const page = parseLmArenaRowsPage(parseJson(text, spec.leaderboardId));
+    total = page.total;
+    if (page.rows.length === 0) break;
+    for (const row of page.rows) {
+      collected.push(row);
+      if (row.category !== undefined) {
+        counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
+      }
+    }
+    offset += page.rows.length;
+    // A config's schema is uniform: if no row so far carries a category
+    // column, none will — stop walking pages that can never match.
+    if (counts.size === 0) break;
+    const ready = categoryKeys.find((key) => (counts.get(key) ?? 0) >= topN);
+    if (ready !== undefined) {
+      return collectTop(categoryRows(collected, ready), topN, spec, `category=${ready}`);
+    }
+  }
+  // No key reached topN within the pages walked: serve the highest-priority
+  // key that appeared at all (its group may simply have fewer than topN
+  // models, or start beyond the page cap).
+  const partial = categoryKeys.find((key) => (counts.get(key) ?? 0) > 0);
+  if (partial !== undefined) {
+    return collectTop(categoryRows(collected, partial), topN, spec, `category=${partial}`);
+  }
+  throw new Error(
+    `LMArena ${spec.leaderboardId} found no rows for categories [${categoryKeys.join(", ")}] in config '${config}'` +
+      (counts.size > 0
+        ? `; observed categories: ${[...counts.keys()].sort().join(", ")}`
+        : collected.length > 0
+          ? `; fetched ${collected.length} rows but none had a category column`
+          : "; the config returned no rows")
+  );
+}
+
+/**
+ * Fetches one page, retrying transient failures (5xx / 429 / timeout). The HF
+ * datasets-server intermittently answers 5xx while a cold response warms up
+ * and 429s under rate limiting; a short retry covers both within one fetch.
+ */
+async function fetchPageText(url: URL, transport: TransportOptions): Promise<string> {
   for (let attempt = 1; ; attempt += 1) {
     try {
       const { text } = await fetchText(url.toString(), transport.requestOptions);
@@ -222,7 +243,6 @@ async function fetchPageText(url: URL, keyLabel: string, transport: TransportOpt
     } catch (error) {
       transport.logger?.warn("LMArena leaderboard fetch attempt failed", {
         leaderboard: transport.leaderboard,
-        ...(transport.key ? { key: transport.key } : { key: keyLabel }),
         url: url.toString(),
         attempt,
         ...describeError(error)
@@ -236,24 +256,44 @@ async function fetchPageText(url: URL, keyLabel: string, transport: TransportOpt
 }
 
 function isTransportError(error: unknown): boolean {
-  if (error instanceof HttpError) return (error.status ?? 0) >= 500;
+  if (error instanceof HttpError) {
+    const status = error.status ?? 0;
+    return status >= 500 || status === 429;
+  }
   return (
     error instanceof Error &&
     (error.name === "TimeoutError" || error.name === "AbortError" || error.name === "TypeError")
   );
 }
 
+function categoryRows(rows: readonly LmArenaRow[], category: string): LmArenaRow[] {
+  return rows.filter((row) => row.category === category);
+}
+
 function collectTop(
-  page: { rows: LmArenaRow[]; total: number },
+  rows: readonly LmArenaRow[],
   topN: number,
   spec: LmArenaBoardSpec,
   source: string
 ): RankedModel[] {
+  // Completeness proof: ranks are unique per board/category, so the fetched
+  // window holds the true TOP entries iff its rank set is exactly
+  // 1..length. Grouped rank-ascending order is an upstream data property,
+  // not an API contract — a snapshot written in any other layout must fail
+  // closed instead of silently posting a wrong leaderboard.
+  const ranks = rows.map((row) => row.rank).sort((a, b) => a - b);
+  const brokenAt = ranks.findIndex((rank, index) => rank !== index + 1);
+  if (brokenAt !== -1) {
+    throw new Error(
+      `LMArena ${spec.leaderboardId} (${source}) ranks are not the consecutive run 1..${rows.length} ` +
+        `(position ${brokenAt + 1} has rank ${ranks[brokenAt]}); refusing to serve an unverified TOP`
+    );
+  }
   // The upstream leaderboard can list the same model name as two separate
   // rows (e.g. different harness configurations). Keep the best-ranked row
   // per name so the TOP display shows one line per model.
   const byName = new Map<string, RankedModel>();
-  for (const row of page.rows) {
+  for (const row of rows) {
     const model = toRankedModel(row);
     const existing = byName.get(model.name);
     if (!existing || preferred(model, existing)) byName.set(model.name, model);
@@ -277,11 +317,6 @@ function preferred(candidate: RankedModel, existing: RankedModel): boolean {
   );
 }
 
-function describeAttempt(key: string, url: string, error: unknown): string {
-  const detail = describeError(error);
-  return `key=${key} url=${url}${detail.status !== undefined ? ` status=${detail.status}` : ""} error=${detail.error}`;
-}
-
 function describeError(error: unknown): { status?: number; error: string; response?: string } {
   if (error instanceof HttpError) {
     return {
@@ -293,23 +328,12 @@ function describeError(error: unknown): { status?: number; error: string; respon
   return { error: error instanceof Error ? error.message : String(error) };
 }
 
-function filterUrl(categoryKey: string): URL {
-  const url = new URL("https://datasets-server.huggingface.co/filter");
-  url.searchParams.set("dataset", DATASET_ID);
-  url.searchParams.set("config", "text_style_control");
-  url.searchParams.set("split", "latest");
-  url.searchParams.set("where", `"category"='${categoryKey}'`);
-  url.searchParams.set("offset", "0");
-  url.searchParams.set("length", String(PAGE_SIZE));
-  return url;
-}
-
-function rowsUrl(config: string): URL {
+function rowsUrl(config: string, offset: number): URL {
   const url = new URL("https://datasets-server.huggingface.co/rows");
   url.searchParams.set("dataset", DATASET_ID);
   url.searchParams.set("config", config);
   url.searchParams.set("split", "latest");
-  url.searchParams.set("offset", "0");
+  url.searchParams.set("offset", String(offset));
   url.searchParams.set("length", String(PAGE_SIZE));
   return url;
 }

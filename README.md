@@ -16,7 +16,7 @@ LMArena のランキングを毎日1回、主要プロバイダーの新モデ�
 - 1ボードだけ取得失敗しても投稿は続行し、失敗ボードは `⚠️ ランキングを取得できませんでした。` と表示します
 - Discord投稿に失敗した場合は未投稿のまま残るため、次のtick（1分後）で自動再試行します
 
-データはHugging Face.datasets-server経由で公式dataset `lmarena-ai/leaderboard-dataset` を取得します。上流の一時的な500（"dataset index is loading"）やタイムアウトは5秒間隔で3回まで自動リトライし、Overallではカテゴリキー `text` → `overall` の順にフォールバックします。同名モデルが複数行ある場合は最上位の行だけを採用します。
+データはHugging Face.datasets-server経由で公式dataset `lmarena-ai/leaderboard-dataset` から /rows で取得します（/filter はインデックス不具合で長期-downしていたため使いません）。Overallは `text_style_control` configの行データからカテゴリ `overall`（旧 `text`）を優先順にクライアント側で選択します。上流の一時的な5xx・429・タイムアウトは5秒間隔で3回まで自動リトライします。同名モデルが複数行ある場合は最上位の行だけを採用します。
 
 ### 🚀 New Model Alert
 
@@ -83,7 +83,7 @@ Bot起動
 │
 ├─ 📊 Daily Ranking（60秒tickで判定）
 │    毎日設定時刻以降かつ当日未投稿
-│      → LMArena Overall / Coding を並列取得（先頭ページのみ）
+│      → LMArena Overall / Coding を並列取得（Overallはカテゴリ行が揃うまで冒頭ページ、Codingは先頭ページのみ）
 │      → data/lmarena-*.json の前回ランキングと比較
 │      → Embed生成・投稿 → 成功したボードだけ保存 → last-posted.json記録
 │
