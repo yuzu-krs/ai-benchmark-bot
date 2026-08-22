@@ -21,6 +21,8 @@ export interface RankingDeps {
   fetchFn?: typeof globalThis.fetch;
   huggingFaceToken?: string;
   now?: () => Date;
+  /** Base delay for transient-source retries inside each board fetch. */
+  retryDelayMs?: number;
 }
 
 export interface RankingResult {
@@ -42,7 +44,8 @@ export async function runDailyRanking(deps: RankingDeps): Promise<RankingResult>
       fetchLmArenaTop(board, {
         fetchFn: deps.fetchFn,
         ...(deps.logger ? { logger: deps.logger } : {}),
-        ...(deps.huggingFaceToken ? { token: deps.huggingFaceToken } : {})
+        ...(deps.huggingFaceToken ? { token: deps.huggingFaceToken } : {}),
+        ...(deps.retryDelayMs !== undefined ? { retryDelayMs: deps.retryDelayMs } : {})
       })
     )
   );

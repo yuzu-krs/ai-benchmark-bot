@@ -18,10 +18,13 @@ export interface LmArenaBoardSpec {
   readonly displayName: string;
   /**
    * Source-specific fetch identity, decoupled from ids and display names.
-   * Every board reads the /rows endpoint: /filter needs a server-side
+   * Every board reads the /rows endpoint first — /filter needs a server-side
    * dataset index that has stayed unavailable ("Unexpected error." /
    * "dataset index is loading") for a day or more on this dataset, while
-   * /rows serves the same data straight from parquet.
+   * /rows serves the same data straight from parquet. When /rows itself is
+   * transport-unavailable (e.g. 501 "the dataset is currently locked" while
+   * a config is reprocessed), the first page falls back to /first-rows,
+   * which is served from the dataset-viewer cache and survives those locks.
    */
   readonly fetch:
     | { readonly kind: "config"; readonly config: string }
@@ -92,8 +95,8 @@ const rowsPageSchema = z
         })
         .passthrough()
     ),
-    num_rows_total: z.number().int().nonnegative(),
-    num_rows_per_page: z.number().int().positive(),
+    num_rows_total: z.number().int().nonnegative().optional(),
+    num_rows_per_page: z.number().int().positive().optional(),
     partial: z.boolean().optional()
   })
   .passthrough();
@@ -106,7 +109,8 @@ export function parseLmArenaRowsPage(payload: unknown): {
 } {
   const parsed = rowsPageSchema.parse(payload);
   if (parsed.partial === true) throw new Error("LMArena returned a partial dataset response");
-  return { rows: parsed.rows.map(({ row }) => row), total: parsed.num_rows_total };
+  // /first-rows responses carry no pagination counters.
+  return { rows: parsed.rows.map(({ row }) => row), total: parsed.num_rows_total ?? parsed.rows.length };
 }
 
 export interface FetchLmArenaOptions {
@@ -118,9 +122,16 @@ export interface FetchLmArenaOptions {
   retryDelayMs?: number;
 }
 
-/** Total transport attempts per page before giving up on the board. */
+/** Total transport attempts per URL before giving up on it. */
 const MAX_TRANSPORT_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAY_MS = 5_000;
+/**
+ * Retry backoff as multiples of retryDelayMs. HF config locks ("the dataset
+ * is currently locked") are routinely minutes long; the growing delay rides
+ * out the short ones before the /first-rows fallback takes over. With
+ * MAX_TRANSPORT_ATTEMPTS = 3 only two waits ever run (5s, then 15s).
+ */
+const RETRY_BACKOFF_MULTIPLIERS = [1, 3] as const;
 
 /**
  * Fetches the current TOP entries of one LMArena board. Boards are fetched
@@ -156,12 +167,41 @@ export async function fetchLmArenaTop(
   };
 
   if (spec.fetch.kind === "config") {
-    const url = rowsUrl(spec.fetch.config, 0);
-    const text = await fetchPageText(url, transport);
-    const page = parseLmArenaRowsPage(parseJson(text, spec.leaderboardId));
-    return collectTop(page.rows, topN, spec, `config=${spec.fetch.config}`);
+    const first = await fetchFirstPageWithFallback(spec.fetch.config, transport);
+    const page = parseLmArenaRowsPage(parseJson(first.text, spec.leaderboardId));
+    return collectTop(page.rows, topN, spec, viaLabel(`config=${spec.fetch.config}`, first.via));
   }
   return fetchCategoryTop(spec, topN, transport);
+}
+
+type PageSource = "rows" | "first-rows";
+
+function viaLabel(source: string, via: PageSource): string {
+  return via === "first-rows" ? `${source} via /first-rows` : source;
+}
+
+/**
+ * Fetches a board's first page from /rows, falling back to /first-rows when
+ * /rows stays transport-unavailable after its retries (observed live as 501
+ * "the dataset is currently locked" for 12+ hours while one config was
+ * reprocessed). /first-rows is served from the dataset-viewer cache and
+ * survives those locks, but has no pagination — callers get one page.
+ */
+async function fetchFirstPageWithFallback(
+  config: string,
+  transport: TransportOptions
+): Promise<{ text: string; via: PageSource }> {
+  try {
+    return { text: await fetchPageText(rowsUrl(config, 0), transport), via: "rows" };
+  } catch (error) {
+    if (!isTransportError(error)) throw error;
+    transport.logger?.warn("LMArena /rows unavailable; falling back to /first-rows", {
+      leaderboard: transport.leaderboard,
+      config,
+      ...describeError(error)
+    });
+    return { text: await fetchPageText(firstRowsUrl(config), transport), via: "first-rows" };
+  }
 }
 
 interface TransportOptions {
@@ -177,10 +217,12 @@ interface TransportOptions {
 }
 
 /**
- * Pages through /rows collecting rows of the wanted categories. Rows arrive
- * grouped by category and rank-ascending within each group, so a key's TOP N
- * is complete once N of its rows have been seen; keys beyond the page cap
- * that never appeared fall through to the next candidate.
+ * Pages through the config collecting rows of the wanted categories. Rows
+ * arrive grouped by category and rank-ascending within each group, so a
+ * key's TOP N is complete once N of its rows have been seen; keys beyond the
+ * page cap that never appeared fall through to the next candidate. Only the
+ * first page has the /first-rows fallback — deeper pages are only reached
+ * when /rows already proved healthy.
  */
 async function fetchCategoryTop(
   spec: LmArenaBoardSpec,
@@ -193,9 +235,9 @@ async function fetchCategoryTop(
   const collected: LmArenaRow[] = [];
   let offset = 0;
   let total = Number.POSITIVE_INFINITY;
-  for (let pageNumber = 1; pageNumber <= MAX_CATEGORY_PAGES && offset < total; pageNumber += 1) {
-    const text = await fetchPageText(rowsUrl(config, offset), transport);
-    const page = parseLmArenaRowsPage(parseJson(text, spec.leaderboardId));
+  const first = await fetchFirstPageWithFallback(config, transport);
+  let page = parseLmArenaRowsPage(parseJson(first.text, spec.leaderboardId));
+  for (let pageNumber = 1; ; pageNumber += 1) {
     total = page.total;
     if (page.rows.length === 0) break;
     for (const row of page.rows) {
@@ -210,15 +252,31 @@ async function fetchCategoryTop(
     if (counts.size === 0) break;
     const ready = categoryKeys.find((key) => (counts.get(key) ?? 0) >= topN);
     if (ready !== undefined) {
-      return collectTop(categoryRows(collected, ready), topN, spec, `category=${ready}`);
+      return collectTop(
+        categoryRows(collected, ready),
+        topN,
+        spec,
+        viaLabel(`category=${ready}`, first.via)
+      );
     }
+    // /first-rows has no pagination: whatever it returned is all there is.
+    if (first.via === "first-rows") break;
+    if (pageNumber >= MAX_CATEGORY_PAGES || offset >= total) break;
+    page = parseLmArenaRowsPage(
+      parseJson(await fetchPageText(rowsUrl(config, offset), transport), spec.leaderboardId)
+    );
   }
   // No key reached topN within the pages walked: serve the highest-priority
   // key that appeared at all (its group may simply have fewer than topN
   // models, or start beyond the page cap).
   const partial = categoryKeys.find((key) => (counts.get(key) ?? 0) > 0);
   if (partial !== undefined) {
-    return collectTop(categoryRows(collected, partial), topN, spec, `category=${partial}`);
+    return collectTop(
+      categoryRows(collected, partial),
+      topN,
+      spec,
+      viaLabel(`category=${partial}`, first.via)
+    );
   }
   throw new Error(
     `LMArena ${spec.leaderboardId} found no rows for categories [${categoryKeys.join(", ")}] in config '${config}'` +
@@ -231,9 +289,10 @@ async function fetchCategoryTop(
 }
 
 /**
- * Fetches one page, retrying transient failures (5xx / 429 / timeout). The HF
- * datasets-server intermittently answers 5xx while a cold response warms up
- * and 429s under rate limiting; a short retry covers both within one fetch.
+ * Fetches one URL, retrying transient failures (5xx / 429 / timeout) with
+ * growing delays. The HF datasets-server intermittently answers 5xx while a
+ * cold response warms up, 429s under rate limiting, and 501 "the dataset is
+ * currently locked" while a config is reprocessed.
  */
 async function fetchPageText(url: URL, transport: TransportOptions): Promise<string> {
   for (let attempt = 1; ; attempt += 1) {
@@ -249,7 +308,9 @@ async function fetchPageText(url: URL, transport: TransportOptions): Promise<str
       });
       if (attempt >= MAX_TRANSPORT_ATTEMPTS || !isTransportError(error)) throw error;
       if (transport.retryDelayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, transport.retryDelayMs));
+        const multiplier =
+          RETRY_BACKOFF_MULTIPLIERS[attempt - 1] ?? RETRY_BACKOFF_MULTIPLIERS.at(-1) ?? 1;
+        await new Promise((resolve) => setTimeout(resolve, transport.retryDelayMs * multiplier));
       }
     }
   }
@@ -335,6 +396,15 @@ function rowsUrl(config: string, offset: number): URL {
   url.searchParams.set("split", "latest");
   url.searchParams.set("offset", String(offset));
   url.searchParams.set("length", String(PAGE_SIZE));
+  return url;
+}
+
+/** /first-rows serves only the first ~100 rows and takes no paging params. */
+function firstRowsUrl(config: string): URL {
+  const url = new URL("https://datasets-server.huggingface.co/first-rows");
+  url.searchParams.set("dataset", DATASET_ID);
+  url.searchParams.set("config", config);
+  url.searchParams.set("split", "latest");
   return url;
 }
 

@@ -16,7 +16,7 @@ LMArena のランキングを毎日1回、主要プロバイダーの新モデ�
 - 1ボードだけ取得失敗しても投稿は続行し、失敗ボードは `⚠️ ランキングを取得できませんでした。` と表示します
 - Discord投稿に失敗した場合は未投稿のまま残るため、次のtick（1分後）で自動再試行します
 
-データはHugging Face.datasets-server経由で公式dataset `lmarena-ai/leaderboard-dataset` から /rows で取得します（/filter はインデックス不具合で長期-downしていたため使いません）。Overallは `text_style_control` configの行データからカテゴリ `overall`（旧 `text`）を優先順にクライアント側で選択します。上流の一時的な5xx・429・タイムアウトは5秒間隔で3回まで自動リトライします。同名モデルが複数行ある場合は最上位の行だけを採用します。
+データはHugging Face.datasets-server経由で公式dataset `lmarena-ai/leaderboard-dataset` から /rows で取得します（/filter はインデックス不具合で長期-downしていたため使いません）。Overallは `text_style_control` configの行データからカテゴリ `overall`（旧 `text`）を優先順にクライアント側で選択します。上流の一時的な5xx・429・タイムアウトは5秒→15秒のバックオフで3回まで自動リトライし、/rowsがロック中（501 "the dataset is currently locked"）でも `/first-rows`（キャッシュ配信・先頭100行）にフォールバックして当日分を取得します。同名モデルが複数行ある場合は最上位の行だけを採用します。
 
 ### 🚀 New Model Alert
 

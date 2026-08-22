@@ -95,7 +95,8 @@ describe("runDailyRanking", () => {
       logger,
       send: harness.send,
       fetchFn: harness.fetchFn,
-      now: fixedNow
+      now: fixedNow,
+      retryDelayMs: 0
     });
 
     expect(result).toEqual({
@@ -130,7 +131,8 @@ describe("runDailyRanking", () => {
       logger,
       send: harness.send,
       fetchFn: harness.fetchFn,
-      now: fixedNow
+      now: fixedNow,
+      retryDelayMs: 0
     });
     const value = harness.sent[0]!.fields[0]!.value;
     expect(value).toContain("1. model-a");
@@ -157,7 +159,8 @@ describe("runDailyRanking", () => {
       logger,
       send: harness.send,
       fetchFn: harness.fetchFn,
-      now: fixedNow
+      now: fixedNow,
+      retryDelayMs: 0
     });
 
     expect(result.boards).toEqual({ overall: "ok", coding: "failed" });
@@ -187,7 +190,8 @@ describe("runDailyRanking", () => {
       logger,
       send: harness.send,
       fetchFn: harness.fetchFn,
-      now: fixedNow
+      now: fixedNow,
+      retryDelayMs: 0
     });
 
     expect(result.boards).toEqual({ overall: "failed", coding: "failed" });
@@ -211,7 +215,8 @@ describe("runDailyRanking", () => {
         logger,
         send: failingSend,
         fetchFn: harness.fetchFn,
-        now: fixedNow
+        now: fixedNow,
+        retryDelayMs: 0
       })
     ).rejects.toThrow(/discord unavailable/);
     expect(harness.store.loadLastPosted()).toBeUndefined();

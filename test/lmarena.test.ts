@@ -89,6 +89,16 @@ describe("LMArena rows page parsing", () => {
       )
     ).toThrow(/leaderboard_publish_date/);
   });
+
+  it("parses /first-rows payloads that omit the pagination counters", () => {
+    const { rows } = page([
+      row("model-a", 1, 1500, "overall"),
+      row("model-b", 2, 1490, "overall")
+    ]) as { rows: unknown[] };
+    const parsed = parseLmArenaRowsPage({ dataset: "lmarena-ai/leaderboard-dataset", rows });
+    expect(parsed.rows.map((arenaRow) => arenaRow.model_name)).toEqual(["model-a", "model-b"]);
+    expect(parsed.total).toBe(2);
+  });
 });
 
 describe("fetchLmArenaTop", () => {
@@ -319,6 +329,80 @@ describe("fetchLmArenaTop", () => {
     expect(calls).toBe(2);
   });
 
+  it("falls back to /first-rows when /rows stays locked (config board)", async () => {
+    const warnings: Array<{ message: string; fields: Record<string, unknown> }> = [];
+    const urls: string[] = [];
+    const fetchFn = (async (input: string | URL | Request) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes("/rows?")) {
+        return new Response('{"error":"the dataset is currently locked, please try again later."}', {
+          status: 501
+        });
+      }
+      return jsonResponse(page([row("model-a", 1, 1690), row("model-b", 2, 1680)]));
+    }) as typeof fetch;
+
+    const entries = await fetchLmArenaTop("coding", {
+      fetchFn,
+      logger: capturingLogger(warnings),
+      retryDelayMs: 0
+    });
+    expect(entries.map((entry) => entry.name)).toEqual(["model-a", "model-b"]);
+    // 3 /rows attempts, then one /first-rows request that succeeds.
+    expect(urls).toHaveLength(4);
+    expect(urls.filter((url) => url.includes("/first-rows"))).toHaveLength(1);
+    const fallbackUrl = new URL(urls[3]!);
+    expect(fallbackUrl.searchParams.get("config")).toBe("webdev");
+    expect(fallbackUrl.searchParams.get("split")).toBe("latest");
+    expect(warnings.at(-1)).toMatchObject({
+      message: "LMArena /rows unavailable; falling back to /first-rows",
+      fields: expect.objectContaining({
+        leaderboard: "lmarena-coding",
+        config: "webdev",
+        status: 501,
+        response: expect.stringContaining("currently locked")
+      })
+    });
+  });
+
+  it("falls back to /first-rows for category boards too", async () => {
+    const urls: string[] = [];
+    const fetchFn = (async (input: string | URL | Request) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes("/rows?")) return new Response("locked", { status: 501 });
+      return jsonResponse(
+        page(
+          Array.from({ length: 12 }, (_unused, index) =>
+            row(`model-${index + 1}`, index + 1, 1500 - index, "overall")
+          ),
+          389
+        )
+      );
+    }) as typeof fetch;
+
+    const entries = await fetchLmArenaTop("overall", { fetchFn, retryDelayMs: 0 });
+    expect(entries).toHaveLength(10);
+    expect(entries[0]?.name).toBe("model-1");
+    expect(urls).toHaveLength(4);
+  });
+
+  it("labels partial-fallback failures with the /first-rows source", async () => {
+    // A short overall group with a broken rank run forces the partial path
+    // and a rank-run violation — the error must name the degraded source.
+    const fetchFn = (async (input: string | URL | Request) => {
+      if (String(input).includes("/rows?")) return new Response("locked", { status: 501 });
+      return jsonResponse(
+        page([row("overall-a", 1, 1500, "overall"), row("overall-b", 2, 1490, "overall"), row("overall-c", 7, 1480, "overall")])
+      );
+    }) as typeof fetch;
+
+    await expect(fetchLmArenaTop("overall", { fetchFn, retryDelayMs: 0 })).rejects.toThrow(
+      /category=overall via \/first-rows/
+    );
+  });
+
   it("propagates HTTP failures so the board can be reported as unavailable", async () => {
     let calls = 0;
     const fetchFn = (async () => {
@@ -326,7 +410,8 @@ describe("fetchLmArenaTop", () => {
       return new Response("boom", { status: 500 });
     }) as typeof fetch;
     await expect(fetchLmArenaTop("overall", { fetchFn, retryDelayMs: 0 })).rejects.toThrow(/500/);
-    expect(calls).toBe(3);
+    // 3 attempts on /rows plus 3 on the /first-rows fallback.
+    expect(calls).toBe(6);
   });
 
   it("does not retry 4xx client errors", async () => {
