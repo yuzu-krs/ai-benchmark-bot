@@ -4,6 +4,7 @@ import { googleSource } from "./google.js";
 import { mistralSource } from "./mistral.js";
 import { openAiSource } from "./openai.js";
 import { xaiSource } from "./xai.js";
+import { zaiSource } from "./zai.js";
 import type { ProviderSource } from "./common.js";
 
 export { fetchAnnouncementItems } from "./common.js";
@@ -21,5 +22,6 @@ export const PROVIDER_SOURCES: readonly ProviderSource[] = [
   googleSource,
   mistralSource,
   xaiSource,
-  deepSeekSource
+  deepSeekSource,
+  zaiSource
 ];

@@ -20,7 +20,7 @@ LMArena のランキングを毎日1回、主要プロバイダーの新モデ�
 
 ### 🚀 New Model Alert
 
-OpenAI / Anthropic / Google / xAI / Mistral / DeepSeek の公式changelog・リリースノートを `ALERT_POLL_MINUTES`（既定60分）ごとに確認し、新しいモデルの正式発表（confidence: confirmed）を検出したら即時通知します。
+OpenAI / Anthropic / Google / xAI / Mistral / DeepSeek / Z.ai の公式changelog・リリースノートを `ALERT_POLL_MINUTES`（既定60分）ごとに確認し、新しいモデルの正式発表（confidence: confirmed）を検出したら即時通知します。
 
 | プロバイダー | 取得先 | 形式 |
 | --- | --- | --- |
@@ -30,6 +30,7 @@ OpenAI / Anthropic / Google / xAI / Mistral / DeepSeek の公式changelog・リ�
 | xAI | `docs.x.ai/developers/release-notes` | Markdown |
 | Mistral | `mistral.ai/news/rss` | RSS |
 | DeepSeek | `api-docs.deepseek.com/updates` | HTML |
+| Z.ai | `docs.z.ai/release-notes` | HTML |
 
 - 通知済みモデルは `seen-models.json` で管理し、重複通知しません（上限500件、古いものから削除）
 - **初回起動時は現在のモデルを無通知でベースラインとして記録**するため、既存モデルが一斉通知されることはありません

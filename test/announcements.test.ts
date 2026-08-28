@@ -6,6 +6,7 @@ import { parseGoogleChangelogHtml } from "../src/announcements/google.js";
 import { parseMistralRss } from "../src/announcements/mistral.js";
 import { parseOpenAiMarkdown } from "../src/announcements/openai.js";
 import { parseXaiMarkdown } from "../src/announcements/xai.js";
+import { parseZaiHtml } from "../src/announcements/zai.js";
 import {
   buildAnnouncementItems,
   classifyAnnouncement,
@@ -221,6 +222,23 @@ describe("official announcement fixture parsers", () => {
     });
   });
 
+  it("parses Z.ai release-note entries and drops non-text models", () => {
+    const raw = parseZaiHtml(fixture("zai.html"));
+    const items = buildAnnouncementItems("zai", raw);
+    // GLM-OCR is an OCR-family entry, which classification filters out.
+    expect(raw).toHaveLength(3);
+    expect(items).toHaveLength(2);
+    expect(items[0]?.title).toBe("GLM-5.3-Flash");
+    expect(items[0]).toMatchObject({
+      confidence: "confirmed",
+      publishedAt: "2026-08-26T00:00:00.000Z",
+      url: "https://docs.z.ai/guides/vlm/glm-5.3-flash"
+    });
+    expect(items[0]?.modelIds).toContain("glm-5.3-flash");
+    expect(items[1]?.modelIds).toContain("glm-5.3");
+    expect(items[1]?.url).toBe("https://docs.z.ai/guides/llm/glm-5.3");
+  });
+
   it("strips Unicode format characters before parsing DeepSeek dates and keys", () => {
     const html = `
       <main>
@@ -248,5 +266,6 @@ describe("official announcement fixture parsers", () => {
     expect(() => parseGoogleChangelogHtml("<html></html>")).toThrow(/headings/);
     expect(() => parseOpenAiMarkdown("# Just a title")).toThrow(/sections/);
     expect(() => parseXaiMarkdown("# Release notes")).toThrow(/entries/);
+    expect(() => parseZaiHtml("<html></html>")).toThrow(/entries/);
   });
 });
