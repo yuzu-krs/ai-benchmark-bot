@@ -20,7 +20,7 @@ LMArena のランキングを毎日1回、主要プロバイダーの新モデ�
 
 ### 🚀 New Model Alert
 
-OpenAI / Anthropic / Google / xAI / Mistral / DeepSeek / Z.ai の公式changelog・リリースノートを `ALERT_POLL_MINUTES`（既定60分）ごとに確認し、新しいモデルの正式発表（confidence: confirmed）を検出したら即時通知します。
+OpenAI / Anthropic / Google / xAI / Mistral / DeepSeek / Z.ai / Qwen / Moonshot / Meta の公式changelog・リリースノートを `ALERT_POLL_MINUTES`（既定60分）ごとに確認し、新しいモデルの正式発表（confidence: confirmed）を検出したら即時通知します。
 
 | プロバイダー | 取得先 | 形式 |
 | --- | --- | --- |
@@ -31,7 +31,11 @@ OpenAI / Anthropic / Google / xAI / Mistral / DeepSeek / Z.ai の公式changelog
 | Mistral | `mistral.ai/news/rss` | RSS |
 | DeepSeek | `api-docs.deepseek.com/updates` | HTML |
 | Z.ai | `docs.z.ai/release-notes` | HTML |
+| Qwen | HF `api/models?author=Qwen` | JSON |
+| Moonshot AI | HF `api/models?author=moonshotai` | JSON |
+| Meta (Llama) | HF `api/models?author=meta-llama` | JSON |
 
+- Hugging Face組織ソース（Qwen / Moonshot / Meta）はFP8・GGUF等の量子化バリアントとGuard系セーフティモデルを除外します
 - 通知済みモデルは `seen-models.json` で管理し、重複通知しません（上限500件、古いものから削除）
 - **初回起動時は現在のモデルを無通知でベースラインとして記録**するため、既存モデルが一斉通知されることはありません
 - 通知送信に失敗したモデルは未記録のまま残り、次回ポーリングで再通知を試みます

@@ -1,0 +1,22 @@
+[
+  {
+    "modelId": "Qwen/Qwen3.8-Flash-Next-FP8",
+    "createdAt": "2026-08-24T08:25:23.000Z",
+    "pipeline_tag": "image-text-to-text"
+  },
+  {
+    "modelId": "Qwen/Qwen3.8-Flash-Next",
+    "createdAt": "2026-08-24T08:24:59.000Z",
+    "pipeline_tag": "image-text-to-text"
+  },
+  {
+    "modelId": "meta-llama/Llama-Prompt-Guard-2-86M",
+    "createdAt": "2025-04-28T09:00:00.000Z",
+    "pipeline_tag": "text-classification"
+  },
+  {
+    "modelId": "moonshotai/Kimi-K3",
+    "createdAt": "2026-06-13T08:00:00.000Z",
+    "pipeline_tag": "text-generation"
+  }
+]

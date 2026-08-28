@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnthropicRss } from "../src/announcements/anthropic.js";
 import { parseDeepSeekHtml } from "../src/announcements/deepseek.js";
 import { parseGoogleChangelogHtml } from "../src/announcements/google.js";
+import { parseHuggingFaceModelList } from "../src/announcements/huggingface.js";
 import { parseMistralRss } from "../src/announcements/mistral.js";
 import { parseOpenAiMarkdown } from "../src/announcements/openai.js";
 import { parseXaiMarkdown } from "../src/announcements/xai.js";
@@ -239,6 +240,20 @@ describe("official announcement fixture parsers", () => {
     expect(items[1]?.url).toBe("https://docs.z.ai/guides/llm/glm-5.3");
   });
 
+  it("parses Hugging Face org releases and drops quantization and guard repos", () => {
+    const raw = parseHuggingFaceModelList(fixture("hf-models.json"));
+    expect(raw.map((entry) => entry.title)).toEqual(["Qwen3.8-Flash-Next", "Kimi-K3"]);
+    const items = buildAnnouncementItems("qwen", raw);
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      confidence: "confirmed",
+      publishedAt: "2026-08-24T08:24:59.000Z",
+      url: "https://huggingface.co/Qwen/Qwen3.8-Flash-Next"
+    });
+    expect(items[0]?.modelIds).toContain("qwen3.8-flash-next");
+    expect(items[1]?.modelIds).toContain("kimi-k3");
+  });
+
   it("strips Unicode format characters before parsing DeepSeek dates and keys", () => {
     const html = `
       <main>
@@ -267,5 +282,8 @@ describe("official announcement fixture parsers", () => {
     expect(() => parseOpenAiMarkdown("# Just a title")).toThrow(/sections/);
     expect(() => parseXaiMarkdown("# Release notes")).toThrow(/entries/);
     expect(() => parseZaiHtml("<html></html>")).toThrow(/entries/);
+    expect(() => parseHuggingFaceModelList("not json")).toThrow(/invalid JSON/);
+    expect(() => parseHuggingFaceModelList('{"nope": true}')).toThrow(/not an array/);
+    expect(() => parseHuggingFaceModelList("[]")).toThrow(/empty/);
   });
 });

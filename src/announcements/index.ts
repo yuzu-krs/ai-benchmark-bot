@@ -1,6 +1,7 @@
 import { anthropicSource } from "./anthropic.js";
 import { deepSeekSource } from "./deepseek.js";
 import { googleSource } from "./google.js";
+import { metaSource, moonshotSource, qwenSource } from "./huggingface.js";
 import { mistralSource } from "./mistral.js";
 import { openAiSource } from "./openai.js";
 import { xaiSource } from "./xai.js";
@@ -23,5 +24,8 @@ export const PROVIDER_SOURCES: readonly ProviderSource[] = [
   mistralSource,
   xaiSource,
   deepSeekSource,
-  zaiSource
+  zaiSource,
+  qwenSource,
+  moonshotSource,
+  metaSource
 ];
