@@ -27,6 +27,23 @@ function okResponse(): Response {
   });
 }
 
+function pricingResponse(models: Array<Record<string, unknown>>): Response {
+  return new Response(JSON.stringify({ data: models }), {
+    status: 200,
+    headers: { "content-type": "application/json" }
+  });
+}
+
+/** A catalog entry that matches none of the fixture model ids. */
+const UNRELATED_CATALOG_MODEL = {
+  id: "unrelated/vendor-model",
+  name: "Vendor: Unrelated Model",
+  hugging_face_id: null,
+  created: 1,
+  context_length: 8192,
+  pricing: { prompt: "0.0000012", completion: "0.000012" }
+};
+
 function source(id: string, raws: () => RawAnnouncement[]): ProviderSource {
   return {
     id,
@@ -62,11 +79,25 @@ interface Harness {
   log: CallLog;
   send: (embed: EmbedPayload) => Promise<void>;
   fetchFn: typeof fetch;
+  /** How often the OpenRouter pricing catalog URL was fetched. */
+  calls: { openRouter: number };
+  setPricingResponder: (responder: () => Promise<Response>) => void;
 }
 
 function createHarness(sendImpl?: (embed: EmbedPayload) => Promise<void>): Harness {
   const store = new StateStore(mkdtempSync(join(tmpdir(), "alerts-")));
   const log: CallLog = { sent: [], failures: 0 };
+  let pricingResponder: () => Promise<Response> = () =>
+    Promise.resolve(pricingResponse([UNRELATED_CATALOG_MODEL]));
+  const calls = { openRouter: 0 };
+  const fetchFn = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("openrouter.ai")) {
+      calls.openRouter += 1;
+      return pricingResponder();
+    }
+    return okResponse();
+  }) as typeof fetch;
   return {
     store,
     log,
@@ -75,7 +106,11 @@ function createHarness(sendImpl?: (embed: EmbedPayload) => Promise<void>): Harne
       (async (embed) => {
         log.sent.push(embed);
       }),
-    fetchFn: (async () => okResponse()) as typeof fetch
+    fetchFn,
+    calls,
+    setPricingResponder: (responder) => {
+      pricingResponder = responder;
+    }
   };
 }
 
@@ -182,5 +217,166 @@ describe("pollNewModelAlerts", () => {
     });
     expect(notified).toBe(1);
     expect(harness.log.sent).toHaveLength(1);
+  });
+
+  it("attaches resolved prices to the alert embed", async () => {
+    const harness = createHarness();
+    harness.store.saveSeenModels([
+      { key: seenModelKey("openai", "gpt-5"), providerId: "openai", modelId: "gpt-5", firstSeenAt: "2026-08-01T00:00:00.000Z" }
+    ]);
+    harness.setPricingResponder(() =>
+      Promise.resolve(
+        pricingResponse([
+          {
+            id: "openai/gpt-6",
+            name: "OpenAI: GPT-6",
+            hugging_face_id: null,
+            created: 10,
+            context_length: 400_000,
+            pricing: { prompt: "0.00000125", completion: "0.00001" }
+          },
+          UNRELATED_CATALOG_MODEL
+        ])
+      )
+    );
+
+    const notified = await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger, send: harness.send,
+      sources: [source("openai", () => [newModelRaw("gpt-6")])],
+      fetchFn: harness.fetchFn, now: fixedNow
+    });
+
+    expect(notified).toBe(1);
+    const fields = Object.fromEntries(harness.log.sent[0]!.fields.map((field) => [field.name, field.value]));
+    expect(fields["💰 価格 / コンテキスト"]).toBe("$1.25/$10 · 400K");
+    // The priced alert still gets recorded as seen like any other.
+    expect(harness.store.loadSeenModels().map((model) => model.key)).toContain(
+      seenModelKey("openai", "gpt-6")
+    );
+  });
+
+  it("lists only the models that matched pricing", async () => {
+    const harness = createHarness();
+    harness.store.saveSeenModels([]);
+    harness.setPricingResponder(() =>
+      Promise.resolve(
+        pricingResponse([
+          {
+            id: "openai/gpt-6",
+            name: "OpenAI: GPT-6",
+            hugging_face_id: null,
+            created: 10,
+            context_length: 400_000,
+            pricing: { prompt: "0.00000125", completion: "0.00001" }
+          }
+        ])
+      )
+    );
+    // One announcement carrying two models: only the matched one gets a line.
+    const multiModelRaw: RawAnnouncement = {
+      key: "launch-multi",
+      title: "We launched two models",
+      url: "https://example.com/launch",
+      summary: "Two new language models.",
+      explicitModelIds: ["gpt-6", "gpt-unknown"]
+    };
+
+    await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger, send: harness.send,
+      sources: [source("openai", () => [multiModelRaw])],
+      fetchFn: harness.fetchFn, now: fixedNow
+    });
+
+    const fields = Object.fromEntries(harness.log.sent[0]!.fields.map((field) => [field.name, field.value]));
+    expect(fields["💰 価格 / コンテキスト"]).toBe("`gpt-6` — $1.25/$10 · 400K");
+  });
+
+  it("posts alerts without a pricing field when nothing matches", async () => {
+    const harness = createHarness();
+    harness.store.saveSeenModels([]);
+
+    await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger, send: harness.send,
+      sources: [source("openai", () => [newModelRaw("gpt-6")])],
+      fetchFn: harness.fetchFn, now: fixedNow
+    });
+
+    const fieldNames = harness.log.sent[0]!.fields.map((field) => field.name);
+    expect(fieldNames).not.toContain("💰 価格 / コンテキスト");
+  });
+
+  it("posts alerts without prices when OpenRouter fails and still records them", async () => {
+    const harness = createHarness();
+    harness.store.saveSeenModels([]);
+    harness.setPricingResponder(() => Promise.resolve(new Response("down", { status: 500 })));
+
+    const notified = await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger, send: harness.send,
+      sources: [source("openai", () => [newModelRaw("gpt-6")])],
+      fetchFn: harness.fetchFn, retryDelayMs: 0, now: fixedNow
+    });
+
+    expect(notified).toBe(1);
+    const fieldNames = harness.log.sent[0]!.fields.map((field) => field.name);
+    expect(fieldNames).not.toContain("💰 価格 / コンテキスト");
+    expect(harness.store.loadSeenModels().map((model) => model.key)).toEqual([
+      seenModelKey("openai", "gpt-6")
+    ]);
+  });
+
+  it("keeps the alert pending when both pricing and sending fail", async () => {
+    const harness = createHarness(async () => {
+      throw new Error("discord unavailable");
+    });
+    harness.store.saveSeenModels([]);
+    harness.setPricingResponder(() => Promise.resolve(new Response("down", { status: 500 })));
+    const sources = [source("openai", () => [newModelRaw("gpt-6")])];
+
+    await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger, send: harness.send,
+      sources, fetchFn: harness.fetchFn, retryDelayMs: 0, now: fixedNow
+    });
+    expect(harness.store.loadSeenModels()).toEqual([]);
+
+    // With Discord healthy again the same alert is retried on the next poll.
+    harness.send = async (embed) => {
+      harness.log.sent.push(embed);
+    };
+    const retried = await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger, send: harness.send,
+      sources, fetchFn: harness.fetchFn, retryDelayMs: 0, now: fixedNow
+    });
+    expect(retried).toBe(1);
+  });
+
+  it("skips the pricing catalog entirely on the baseline poll", async () => {
+    const harness = createHarness();
+
+    const notified = await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger, send: harness.send,
+      sources: [source("openai", () => [newModelRaw("gpt-6")])],
+      fetchFn: harness.fetchFn, now: fixedNow
+    });
+
+    expect(notified).toBe(0);
+    expect(harness.calls.openRouter).toBe(0);
+  });
+
+  it("shares one pricing fetch across multiple alerts in a run", async () => {
+    const harness = createHarness();
+    harness.store.saveSeenModels([]);
+    const sources = [
+      source("openai", () => [newModelRaw("gpt-6")]),
+      source("anthropic", () => [newModelRaw("claude-x")])
+    ];
+
+    const notified = await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger, send: harness.send,
+      sources, fetchFn: harness.fetchFn, now: fixedNow
+    });
+
+    expect(notified).toBe(2);
+    expect(harness.log.sent).toHaveLength(2);
+    expect(harness.calls.openRouter).toBe(1);
   });
 });

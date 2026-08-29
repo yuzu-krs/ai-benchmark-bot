@@ -3,11 +3,12 @@ import {
   buildBoardValue,
   buildDailyRankingEmbed,
   buildNewModelEmbed,
+  buildPricingFieldValue,
   compareWithPrevious,
   formatRankLine,
   truncateText
 } from "../src/embeds.js";
-import type { RankedModel, RankingSnapshot } from "../src/types.js";
+import type { NewModelAnnouncement, RankedModel, RankingSnapshot } from "../src/types.js";
 
 function model(rank: number, name = `model-${rank}`): RankedModel {
   return { entityKey: name, name, rank, score: 1500 - rank, scoreDisplay: String(1500 - rank) };
@@ -60,6 +61,24 @@ describe("rank line formatting", () => {
     expect(Array.from(truncated).length).toBeLessThanOrEqual(11);
     expect(truncated.endsWith("…")).toBe(true);
   });
+
+  it("appends resolved prices to ranking lines", () => {
+    const comparison = {
+      entry: model(1, "Model A"),
+      previousRank: 3,
+      delta: 2,
+      isNew: false,
+      priceDisplay: "$1.25/$10"
+    };
+    expect(formatRankLine(comparison)).toBe("🥇 1. Model A · 1499 · $1.25/$10 ⬆️ +2");
+    expect(formatRankLine(comparison, 36, false)).toBe("🥇 1. Model A · $1.25/$10 ⬆️ +2");
+    expect(formatRankLine(comparison, 36, true, false)).toBe("🥇 1. Model A · 1499 ⬆️ +2");
+  });
+
+  it("renders byte-identical lines when no price resolved", () => {
+    const comparison = { entry: model(2, "Model B"), previousRank: 2, delta: 0, isNew: false };
+    expect(formatRankLine(comparison)).toBe("🥈 2. Model B · 1498 ➖");
+  });
 });
 
 describe("daily ranking embed", () => {
@@ -98,6 +117,38 @@ describe("daily ranking embed", () => {
     const value = buildBoardValue(compareWithPrevious(longNames, undefined));
     expect(value.length).toBeLessThanOrEqual(1024);
     expect(value.split("\n")).toHaveLength(10);
+  });
+
+  it("keeps priced boards inside the default limit", () => {
+    const priced = Array.from({ length: 10 }, (_unused, index) => ({
+      ...model(index + 1, `very-long-model-name-that-never-ends-${"x".repeat(60)}-${index}`),
+      priceDisplay: "$1.25/$10"
+    }));
+    const value = buildBoardValue(priced.map((entry) => ({ entry, isNew: false })));
+    expect(value.length).toBeLessThanOrEqual(1024);
+    expect(value.split("\n")).toHaveLength(10);
+  });
+
+  it("drops prices before scores when the field overflows", () => {
+    const priced = Array.from({ length: 10 }, (_unused, index) => ({
+      ...model(index + 1, `very-long-model-name-that-never-ends-${"x".repeat(60)}-${index}`),
+      priceDisplay: "$1.25/$10"
+    }));
+    // Tight enough that the price-bearing rungs overflow but the
+    // score-bearing one still fits.
+    const value = buildBoardValue(priced.map((entry) => ({ entry, isNew: false })), 380);
+    expect(value.length).toBeLessThanOrEqual(380);
+    expect(value).not.toContain("$");
+    expect(value).toContain("1499");
+  });
+
+  it("explains the price notation in the footer legend", () => {
+    const embed = buildDailyRankingEmbed({
+      boards: [{ board: "overall", title: "LMArena Overall", emoji: "🏆" }],
+      now: new Date("2026-08-16T07:00:30.000Z"),
+      timeZone: "Asia/Tokyo"
+    });
+    expect(embed.footer?.text).toContain("💰 入力/出力 $/1Mトークン");
   });
 });
 
@@ -139,5 +190,76 @@ describe("new model embed", () => {
     const long = buildNewModelEmbed({ ...base, summary: "さ".repeat(2000) }, "Asia/Tokyo");
     expect(long.fields[2]?.value.length).toBeLessThanOrEqual(1001);
     expect(long.fields[2]?.value.endsWith("…")).toBe(true);
+  });
+
+  describe("pricing field", () => {
+    const base = {
+      providerId: "openai",
+      providerName: "OpenAI",
+      title: "t",
+      url: "https://example.com",
+      modelIds: ["gpt-x"],
+      stage: "unknown" as const,
+      detectedAt: "2026-08-16T03:30:00.000Z"
+    };
+
+    const fieldOf = (alert: NewModelAnnouncement): { name: string; value: string } | undefined =>
+      buildNewModelEmbed(alert, "Asia/Tokyo").fields.find(
+        (field) => field.name === "💰 価格 / コンテキスト"
+      );
+
+    it("omits the field entirely when nothing matched", () => {
+      expect(buildPricingFieldValue(base)).toBeUndefined();
+      expect(fieldOf(base)).toBeUndefined();
+    });
+
+    it("renders a single model inline with its context length", () => {
+      const alert: NewModelAnnouncement = {
+        ...base,
+        pricingByModel: { "gpt-x": { priceDisplay: "$1.25/$10", contextDisplay: "400K" } }
+      };
+      expect(buildPricingFieldValue(alert)).toBe("$1.25/$10 · 400K");
+      expect(fieldOf(alert)?.value).toBe("$1.25/$10 · 400K");
+    });
+
+    it("lists each model on its own line for multi-model alerts", () => {
+      const alert: NewModelAnnouncement = {
+        ...base,
+        modelIds: ["gpt-x", "gpt-y", "gpt-z"],
+        // gpt-z has no entry: only matched models appear.
+        pricingByModel: {
+          "gpt-x": { priceDisplay: "$1.25/$10", contextDisplay: "400K" },
+          "gpt-y": { priceDisplay: "無料", contextDisplay: "1M" }
+        }
+      };
+      expect(buildPricingFieldValue(alert)).toBe(
+        "`gpt-x` — $1.25/$10 · 400K\n`gpt-y` — 無料 · 1M"
+      );
+    });
+
+    it("caps very long lists and stays inside the field limit", () => {
+      const modelIds = Array.from({ length: 40 }, (_unused, index) => `model-${index}`);
+      const alert: NewModelAnnouncement = {
+        ...base,
+        modelIds,
+        pricingByModel: Object.fromEntries(
+          modelIds.map((modelId) => [modelId, { priceDisplay: "$1.25/$10", contextDisplay: "400K" }])
+        )
+      };
+      const value = buildPricingFieldValue(alert)!;
+      expect(value.split("\n")).toHaveLength(21);
+      expect(value.endsWith("… 他20件")).toBe(true);
+      expect(value.length).toBeLessThanOrEqual(1024);
+    });
+
+    it("truncates a huge single line to the field limit", () => {
+      const alert: NewModelAnnouncement = {
+        ...base,
+        pricingByModel: { "gpt-x": { priceDisplay: "$".repeat(3000) } }
+      };
+      const value = buildPricingFieldValue(alert)!;
+      expect(value.length).toBeLessThanOrEqual(1024);
+      expect(value.endsWith("…")).toBe(true);
+    });
   });
 });

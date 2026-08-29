@@ -13,6 +13,8 @@ LMArena のランキングを毎日1回、主要プロバイダーの新モデ�
 毎日 `DIGEST_HOUR:DIGEST_MINUTE`（既定 07:00 Asia/Tokyo）に、LMArena **Overall** と **Coding** のTOP10を必ず投稿します。
 
 - 変動がなくても毎日投稿し、前回との差分を `🥇🥈🥉` `⬆️ +2` `⬇️ -1` `➖` `🆕 NEW` で示します
+- 各行にはOpenRouter公開APIから取得した短縮価格 `· $1.2/$12`（入力/出力のUSD・1Mトークンあたり、フッターの `💰` 凡例参照）が付きます。マッチしない行は価格なしで表示されます
+- 価格取得に失敗してもランキングは必ず投稿され、価格だけが省略されます
 - 1ボードだけ取得失敗しても投稿は続行し、失敗ボードは `⚠️ ランキングを取得できませんでした。` と表示します
 - Discord投稿に失敗した場合は未投稿のまま残るため、次のtick（1分後）で自動再試行します
 
@@ -36,9 +38,13 @@ OpenAI / Anthropic / Google / xAI / Mistral / DeepSeek / Z.ai / Qwen / Moonshot 
 | Meta (Llama) | HF `api/models?author=meta-llama` | JSON |
 
 - Hugging Face組織ソース（Qwen / Moonshot / Meta）はFP8・GGUF等の量子化バリアントとGuard系セーフティモデルを除外します
+- 通知Embedには `💰 価格 / コンテキスト` フィールドが付きます。OpenRouterのカタログから対応モデルを紐付け、入力/出力価格（$/1Mトークン）とコンテキスト長（`200K` / `1M`）を表示します。無料モデルは `無料`、変動制は `変動制`、OpenRouterに載っていないモデルは表示を省略します
+- 価格取得に失敗しても通知自体は必ず送られ、価格フィールドだけが省略されます
 - 通知済みモデルは `seen-models.json` で管理し、重複通知しません（上限500件、古いものから削除）
 - **初回起動時は現在のモデルを無通知でベースラインとして記録**するため、既存モデルが一斉通知されることはありません
 - 通知送信に失敗したモデルは未記録のまま残り、次回ポーリングで再通知を試みます
+
+価格・コンテキスト長はOpenRouterの公開モデル一覧 `https://openrouter.ai/api/v1/models`（認証不要・ページングなし）から取得し、モデルID・表示名をファジーマッチングで紐付けます。紐付けは精度優先（誤った価格を表示しない）で、不一致行は価格なしになります。
 
 ## セットアップ
 
@@ -69,6 +75,8 @@ Botの招待に必要な権限は `View Channel` / `Send Messages` / `Embed Link
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `HUGGINGFACE_TOKEN` | — | 任意。LMArena取得のレート制限緩和 |
 
+価格取得は公開API（OpenRouter）のため認証情報は不要です。
+
 ## 状態保存（DB不使用）
 
 ```text
@@ -79,7 +87,7 @@ data/
 └─ last-posted.json       # Daily Rankingの当日投稿済みフラグ（二重投稿防止・起動時catch-up）
 ```
 
-書き込みはtmpファイル＋renameのatomic writeで、再起動しても状態は維持されます。破損した状態ファイルがあると起動時にエラーで停止するため、該当ファイルを修復または削除してください。
+書き込みはtmpファイル＋renameのatomic writeで、再起動しても状態は維持されます。破損した状態ファイルがあると起動時にエラーで停止するため、該当ファイルを修復または削除してください。価格データは永続化せず、投稿のたびに取得します。
 
 ## 処理フロー
 
@@ -88,13 +96,13 @@ Bot起動
 │
 ├─ 📊 Daily Ranking（60秒tickで判定）
 │    毎日設定時刻以降かつ当日未投稿
-│      → LMArena Overall / Coding を並列取得（Overallはカテゴリ行が揃うまで冒頭ページ、Codingは先頭ページのみ）
+│      → LMArena Overall / Coding と OpenRouterカタログを並列取得（Overallはカテゴリ行が揃うまで冒頭ページ、Codingは先頭ページのみ／カタログ取得は失敗時は価格なしで続行）
 │      → data/lmarena-*.json の前回ランキングと比較
 │      → Embed生成・投稿 → 成功したボードだけ保存 → last-posted.json記録
 │
 └─ 🚀 New Model Alert（起動時 + ALERT_POLL_MINUTESごと）
-     6プロバイダーを並列取得・パース・分類
-       → confirmed な新モデルだけ即時通知 → seen-models.jsonへ記録
+     10プロバイダーを並列取得・パース・分類
+       → confirmed な新モデルだけOpenRouterカタログ取得（失敗時は価格なしで続行）→ 即時通知 → seen-models.jsonへ記録
 ```
 
 HTTP 500・timeout等の取得失敗はログに記録され、他ボード・他プロバイダーの処理は続行します。ログは標準出力へJSONで出力されます。
@@ -111,6 +119,7 @@ npm run check # 型チェック
 
 - LMArena: 公式Hugging Face dataset（CC BY 4.0前提）。投稿には公式URLを添えます。
 - 公式発表: タイトル・短い要約・URLのみを扱い、記事本文は保存しません。
+- OpenRouter: 公開APIのモデルメタデータ（価格・コンテキスト長）を短い引用として表示します。本BotはOpenRouterと非提携です。
 
 本Botは各取得元と非提携の個人向けプロジェクトです。一般公開・商用化する場合は各取得元の最新の利用条件を再確認してください。
 

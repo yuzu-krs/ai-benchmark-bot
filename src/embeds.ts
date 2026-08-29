@@ -1,5 +1,6 @@
 import { formatLocalDate, formatLocalDateTime } from "./time.js";
 import type {
+  EmbedField,
   EmbedPayload,
   NewModelAnnouncement,
   RankedModel,
@@ -16,25 +17,32 @@ export interface RankComparison {
   /** Positive means the model moved up (a smaller rank number). */
   delta?: number;
   isNew: boolean;
+  /** Short price appended to a ranking line, e.g. "$1.2/$12". Absent = unmatched. */
+  priceDisplay?: string;
 }
 
 /**
  * Compares the fresh board with the previous snapshot. When no previous
  * snapshot exists (first run) nothing is marked NEW and every entry shows ➖.
+ * `prices` maps leaderboard names to short price strings; unmatched names
+ * simply render without a price.
  */
 export function compareWithPrevious(
   entries: RankedModel[],
-  previous?: RankingSnapshot
+  previous?: RankingSnapshot,
+  prices?: ReadonlyMap<string, string>
 ): RankComparison[] {
   const priorRanks = new Map(previous?.entries.map((entry) => [entry.entityKey, entry.rank]));
   const hasBaseline = priorRanks.size > 0;
   return entries.map((entry) => {
     const previousRank = priorRanks.get(entry.entityKey);
+    const priceDisplay = prices?.get(entry.name);
     return {
       entry,
       ...(previousRank !== undefined
         ? { previousRank, delta: previousRank - entry.rank }
         : {}),
+      ...(priceDisplay !== undefined ? { priceDisplay } : {}),
       isNew: hasBaseline && previousRank === undefined
     };
   });
@@ -43,14 +51,19 @@ export function compareWithPrevious(
 export function formatRankLine(
   comparison: RankComparison,
   maxNameLength = 36,
-  includeScore = true
+  includeScore = true,
+  includePrice = true
 ): string {
   const { entry } = comparison;
   const medal = RANK_MEDALS[entry.rank - 1] ?? "";
   const name = truncateText(entry.name, maxNameLength);
   const label = medal ? `${medal} ${entry.rank}. ${name}` : `${entry.rank}. ${name}`;
-  if (!includeScore) return `${label} ${deltaText(comparison)}`;
-  return `${label} · ${entry.scoreDisplay} ${deltaText(comparison)}`;
+  const metrics = [
+    ...(includeScore ? [entry.scoreDisplay] : []),
+    ...(includePrice && comparison.priceDisplay !== undefined ? [comparison.priceDisplay] : [])
+  ];
+  if (metrics.length === 0) return `${label} ${deltaText(comparison)}`;
+  return `${label} · ${metrics.join(" · ")} ${deltaText(comparison)}`;
 }
 
 function deltaText(comparison: RankComparison): string {
@@ -82,33 +95,36 @@ export function buildDailyRankingEmbed(params: {
     description: `📅 ${formatLocalDate(params.now, params.timeZone)}\n🕒 Updated: ${formatLocalDateTime(params.now, params.timeZone)}`,
     color: 0x5865f2,
     fields,
-    footer: { text: "⬆️ 上昇 · ⬇️ 下降 · ➖ 変動なし · 🆕 新規ランクイン" },
+    footer: { text: "⬆️ 上昇 · ⬇️ 下降 · ➖ 変動なし · 🆕 新規ランクイン · 💰 入力/出力 $/1Mトークン" },
     timestamp: params.now.toISOString()
   };
 }
 
 /** Keeps one board's lines inside Discord's 1024-character field limit. */
 export function buildBoardValue(comparisons: RankComparison[], limit = EMBED_FIELD_LIMIT): string {
-  const attempts: Array<{ maxNameLength: number; includeScore: boolean }> = [
-    { maxNameLength: 36, includeScore: true },
-    { maxNameLength: 24, includeScore: true },
-    { maxNameLength: 18, includeScore: false }
+  // Prices are cosmetic: they shrink names first and drop before scores do.
+  const attempts: Array<{ maxNameLength: number; includeScore: boolean; includePrice: boolean }> = [
+    { maxNameLength: 36, includeScore: true, includePrice: true },
+    { maxNameLength: 26, includeScore: true, includePrice: true },
+    { maxNameLength: 22, includeScore: true, includePrice: false },
+    { maxNameLength: 18, includeScore: false, includePrice: false }
   ];
   for (const attempt of attempts) {
     const value = comparisons
       .map((comparison) =>
-        formatRankLine(comparison, attempt.maxNameLength, attempt.includeScore)
+        formatRankLine(comparison, attempt.maxNameLength, attempt.includeScore, attempt.includePrice)
       )
       .join("\n");
     if (value.length <= limit) return value;
   }
   const perLine = Math.floor((limit - 20) / Math.max(1, comparisons.length));
   return comparisons
-    .map((comparison) => truncateText(formatRankLine(comparison, 18, false), perLine))
+    .map((comparison) => truncateText(formatRankLine(comparison, 18, false, false), perLine))
     .join("\n");
 }
 
 export function buildNewModelEmbed(alert: NewModelAnnouncement, timeZone: string): EmbedPayload {
+  const pricingValue = buildPricingFieldValue(alert);
   return {
     title: "🚀 New Model Alert!",
     color: 0x57f287,
@@ -125,10 +141,40 @@ export function buildNewModelEmbed(alert: NewModelAnnouncement, timeZone: string
         value: formatLocalDateTime(new Date(alert.detectedAt), timeZone),
         inline: true
       },
+      ...(pricingValue
+        ? [{ name: "💰 価格 / コンテキスト", value: pricingValue } satisfies EmbedField]
+        : []),
       { name: "🔗 Link", value: alert.url }
     ],
     timestamp: alert.detectedAt
   };
+}
+
+/** Lines shown before the rest collapses into an "… 他n件" marker. */
+const PRICING_FIELD_MAX_LINES = 20;
+
+/**
+ * Renders the alert's resolved prices ("$1.25/$10 · 200K" per model). Returns
+ * undefined when nothing matched, so a pricing outage renders the exact
+ * pre-pricing embed instead of an empty field.
+ */
+export function buildPricingFieldValue(alert: NewModelAnnouncement): string | undefined {
+  const lines = alert.modelIds
+    .map((modelId) => {
+      const price = alert.pricingByModel?.[modelId];
+      if (!price) return undefined;
+      const context = price.contextDisplay !== undefined ? ` · ${price.contextDisplay}` : "";
+      return alert.modelIds.length === 1
+        ? `${price.priceDisplay}${context}`
+        : `\`${modelId}\` — ${price.priceDisplay}${context}`;
+    })
+    .filter((line) => line !== undefined);
+  if (lines.length === 0) return undefined;
+  const visible =
+    lines.length <= PRICING_FIELD_MAX_LINES
+      ? lines
+      : [...lines.slice(0, PRICING_FIELD_MAX_LINES), `… 他${lines.length - PRICING_FIELD_MAX_LINES}件`];
+  return truncateText(visible.join("\n"), EMBED_FIELD_LIMIT);
 }
 
 /** Surrogate-pair-safe truncation with an ellipsis marker. */

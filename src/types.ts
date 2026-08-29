@@ -26,6 +26,14 @@ export interface SeenModel {
   firstSeenAt: string;
 }
 
+/** Display-ready pricing resolved from OpenRouter for one model. */
+export interface ModelPrice {
+  /** "$1.2/$12" per 1M tokens, or "無料" / "変動制". */
+  priceDisplay: string;
+  /** "200K" / "1M"; omitted when unknown. */
+  contextDisplay?: string;
+}
+
 export interface NewModelAnnouncement {
   providerId: string;
   providerName: string;
@@ -35,6 +43,8 @@ export interface NewModelAnnouncement {
   modelIds: string[];
   stage: ReleaseStage;
   publishedAt?: string;
+  /** Keyed by the exact strings in `modelIds`; present only for matched models. */
+  pricingByModel?: Record<string, ModelPrice>;
   detectedAt: string;
 }
 

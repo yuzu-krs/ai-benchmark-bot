@@ -39,8 +39,30 @@ interface Harness {
   sent: EmbedPayload[];
   send: (embed: EmbedPayload) => Promise<void>;
   fetchFn: typeof fetch;
-  setResponse: (board: "overall" | "coding", response: () => Promise<Response>) => void;
+  setResponse: (
+    board: "overall" | "coding" | "openrouter",
+    response: () => Promise<Response>
+  ) => void;
 }
+
+function openRouterResponse(models: Array<Record<string, unknown>>): Promise<Response> {
+  return Promise.resolve(
+    new Response(JSON.stringify({ data: models }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })
+  );
+}
+
+/** A catalog entry that matches none of the leaderboard fixture names. */
+const UNRELATED_CATALOG_MODEL = {
+  id: "unrelated/vendor-model",
+  name: "Vendor: Unrelated Model",
+  hugging_face_id: null,
+  created: 1,
+  context_length: 8192,
+  pricing: { prompt: "0.0000012", completion: "0.000012" }
+};
 
 function createHarness(overallNames: string[], codingNames: string[]): Harness {
   const store = new StateStore(mkdtempSync(join(tmpdir(), "ranking-")));
@@ -57,6 +79,7 @@ function createHarness(overallNames: string[], codingNames: string[]): Harness {
     );
   respond(overallNames, "overall");
   respond(codingNames, "coding");
+  responses.set("openrouter", () => openRouterResponse([UNRELATED_CATALOG_MODEL]));
   return {
     store,
     sent,
@@ -65,6 +88,11 @@ function createHarness(overallNames: string[], codingNames: string[]): Harness {
     },
     fetchFn: (async (input: string | URL | Request) => {
       const url = String(input);
+      if (url.includes("openrouter.ai")) {
+        const responder = responses.get("openrouter");
+        if (!responder) throw new Error(`unexpected url: ${url}`);
+        return responder();
+      }
       const key = url.includes("config=text_style_control") ? "overall" : "coding";
       const responder = responses.get(key);
       if (!responder) throw new Error(`unexpected url: ${url}`);
@@ -221,5 +249,103 @@ describe("runDailyRanking", () => {
     ).rejects.toThrow(/discord unavailable/);
     expect(harness.store.loadLastPosted()).toBeUndefined();
     expect(harness.store.loadRanking("overall")).toBeUndefined();
+  });
+
+  it("appends short prices to matching ranking lines only", async () => {
+    const harness = createHarness(["model-a", "model-b"], ["model-x"]);
+    harness.setResponse(
+      "openrouter",
+      () =>
+        openRouterResponse([
+          {
+            id: "vendor/model-a",
+            name: "Vendor: model-a",
+            hugging_face_id: null,
+            created: 10,
+            context_length: 200_000,
+            pricing: { prompt: "0.0000012", completion: "0.000012" }
+          },
+          UNRELATED_CATALOG_MODEL
+        ])
+    );
+
+    await runDailyRanking({
+      timeZone: "Asia/Tokyo",
+      store: harness.store,
+      logger,
+      send: harness.send,
+      fetchFn: harness.fetchFn,
+      now: fixedNow,
+      retryDelayMs: 0
+    });
+
+    const overallLines = harness.sent[0]!.fields[0]!.value.split("\n");
+    expect(overallLines[0]).toContain("1. model-a");
+    expect(overallLines[0]).toContain("· $1.2/$12");
+    expect(overallLines[1]).not.toContain("$");
+  });
+
+  it("posts the ranking without prices when OpenRouter fails", async () => {
+    const harness = createHarness(["model-a"], ["model-x"]);
+    harness.setResponse(
+      "openrouter",
+      () => Promise.resolve(new Response("down", { status: 500 }))
+    );
+    const warnings: Array<{ message: string; fields: Record<string, unknown> }> = [];
+    const watchingLogger: Logger = {
+      ...logger,
+      warn: (message, fields = {}) => {
+        warnings.push({ message, fields });
+      }
+    };
+
+    const result = await runDailyRanking({
+      timeZone: "Asia/Tokyo",
+      store: harness.store,
+      logger: watchingLogger,
+      send: harness.send,
+      fetchFn: harness.fetchFn,
+      now: fixedNow,
+      retryDelayMs: 0
+    });
+
+    expect(result.boards).toEqual({ overall: "ok", coding: "ok" });
+    expect(harness.sent).toHaveLength(1);
+    for (const field of harness.sent[0]!.fields) {
+      expect(field.value).not.toContain("$");
+    }
+    expect(warnings.some(({ message }) => /OpenRouter pricing unavailable/.test(message))).toBe(
+      true
+    );
+    // Prices are presentation-only: snapshots stay price-free.
+    expect(harness.store.loadRanking("overall")?.entries[0]).toEqual({
+      entityKey: "model-a",
+      name: "model-a",
+      organization: "Example AI",
+      rank: 1,
+      score: 1500,
+      scoreDisplay: "1500"
+    });
+    expect(harness.store.loadLastPosted()?.dateKey).toBe("2026-08-16");
+  });
+
+  it("treats a rejected pricing fetch the same as an HTTP failure", async () => {
+    const harness = createHarness(["model-a"], ["model-x"]);
+    harness.setResponse("openrouter", () => Promise.reject(new Error("network unreachable")));
+
+    const result = await runDailyRanking({
+      timeZone: "Asia/Tokyo",
+      store: harness.store,
+      logger,
+      send: harness.send,
+      fetchFn: harness.fetchFn,
+      now: fixedNow,
+      retryDelayMs: 0
+    });
+
+    expect(result.posted).toBe(true);
+    expect(harness.sent).toHaveLength(1);
+    expect(harness.sent[0]!.fields[0]!.value).not.toContain("$");
+    expect(harness.store.loadLastPosted()?.dateKey).toBe("2026-08-16");
   });
 });

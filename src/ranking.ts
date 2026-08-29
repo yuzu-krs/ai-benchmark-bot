@@ -1,6 +1,11 @@
 import { buildDailyRankingEmbed, compareWithPrevious, type BoardView } from "./embeds.js";
 import { errorFields, type Logger } from "./logger.js";
 import { fetchLmArenaTop, LMARENA_BOARDS, type LmArenaBoard } from "./lmarena.js";
+import {
+  fetchOpenRouterModels,
+  resolveRankingPricing,
+  type OpenRouterCatalog
+} from "./openrouter.js";
 import type { StateStore } from "./state.js";
 import { localDateKey } from "./time.js";
 import type { EmbedPayload, RankedModel } from "./types.js";
@@ -32,23 +37,28 @@ export interface RankingResult {
 }
 
 /**
- * Fetches both LMArena boards, posts the daily ranking embed, then persists
- * the boards that succeeded. A failed board is reported inside the embed and
- * keeps its previous snapshot so the next comparison stays meaningful.
+ * Fetches both LMArena boards plus the OpenRouter pricing catalog in
+ * parallel, posts the daily ranking embed, then persists the boards that
+ * succeeded. A failed board is reported inside the embed and keeps its
+ * previous snapshot so the next comparison stays meaningful; a failed
+ * pricing fetch only costs the prices, never the post itself.
  */
 export async function runDailyRanking(deps: RankingDeps): Promise<RankingResult> {
   const now = deps.now?.() ?? new Date();
   const dateKey = localDateKey(now, deps.timeZone);
-  const results = await Promise.allSettled(
-    BOARDS.map((board) =>
-      fetchLmArenaTop(board, {
-        fetchFn: deps.fetchFn,
-        ...(deps.logger ? { logger: deps.logger } : {}),
-        ...(deps.huggingFaceToken ? { token: deps.huggingFaceToken } : {}),
-        ...(deps.retryDelayMs !== undefined ? { retryDelayMs: deps.retryDelayMs } : {})
-      })
-    )
-  );
+  const [results, pricingCatalog] = await Promise.all([
+    Promise.allSettled(
+      BOARDS.map((board) =>
+        fetchLmArenaTop(board, {
+          fetchFn: deps.fetchFn,
+          ...(deps.logger ? { logger: deps.logger } : {}),
+          ...(deps.huggingFaceToken ? { token: deps.huggingFaceToken } : {}),
+          ...(deps.retryDelayMs !== undefined ? { retryDelayMs: deps.retryDelayMs } : {})
+        })
+      )
+    ),
+    fetchPricingCatalog(deps)
+  ]);
 
   const views: BoardView[] = [];
   const succeeded: Array<{ board: LmArenaBoard; entries: RankedModel[] }> = [];
@@ -60,11 +70,14 @@ export async function runDailyRanking(deps: RankingDeps): Promise<RankingResult>
     if (result.status === "fulfilled") {
       boards[board] = "ok";
       const previous = deps.store.loadRanking(board);
+      const prices = pricingCatalog
+        ? resolveRankingPricing(pricingCatalog, result.value.map((entry) => entry.name))
+        : undefined;
       views.push({
         board,
         title: spec.displayName,
         emoji: BOARD_PRESENTATION[board].emoji,
-        entries: compareWithPrevious(result.value, previous)
+        entries: compareWithPrevious(result.value, previous, prices)
       });
       succeeded.push({ board, entries: result.value });
     } else {
@@ -95,4 +108,22 @@ export async function runDailyRanking(deps: RankingDeps): Promise<RankingResult>
     coding: boards.coding
   });
   return { dateKey, posted: true, boards };
+}
+
+/**
+ * Loads the pricing catalog, degrading to "no prices" (with a warn log) on
+ * any failure so a pricing outage never blocks the daily post.
+ */
+function fetchPricingCatalog(deps: RankingDeps): Promise<OpenRouterCatalog | undefined> {
+  return fetchOpenRouterModels({
+    fetchFn: deps.fetchFn,
+    ...(deps.logger ? { logger: deps.logger } : {}),
+    ...(deps.retryDelayMs !== undefined ? { retryDelayMs: deps.retryDelayMs } : {})
+  }).catch((error: unknown) => {
+    deps.logger.warn(
+      "OpenRouter pricing unavailable; posting ranking without prices",
+      errorFields(error)
+    );
+    return undefined;
+  });
 }
