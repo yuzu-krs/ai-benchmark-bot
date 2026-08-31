@@ -11,6 +11,7 @@ import {
   matchRankingModelPricing,
   normalizeSlugKey,
   parseOpenRouterModels,
+  rankingSlugVariants,
   resolveAlertPricing
 } from "../src/openrouter.js";
 import type { OpenRouterCatalog } from "../src/openrouter.js";
@@ -294,6 +295,31 @@ describe("ranking name pricing matching", () => {
     expect(matchRankingModelPricing(CATALOG, "nonexistent-model")).toBeUndefined();
     expect(matchRankingModelPricing(CATALOG, "o3")).toBeUndefined();
     expect(matchRankingModelPricing(CATALOG, "")).toBeUndefined();
+  });
+
+  it("matches dash-separated versions through dotted catalog slugs", () => {
+    expect(matchRankingModelPricing(CATALOG, "claude-opus-4-5")?.id).toBe(
+      "anthropic/claude-opus-4.5"
+    );
+  });
+
+  it("matches effort-suffixed leaderboard names to the base model", () => {
+    expect(matchRankingModelPricing(CATALOG, "claude-opus-4-5-high")?.id).toBe(
+      "anthropic/claude-opus-4.5"
+    );
+    expect(matchRankingModelPricing(CATALOG, "grok-4-xhigh")?.id).toBe("x-ai/grok-4");
+    expect(matchRankingModelPricing(CATALOG, "gpt-5.2 (low)")?.id).toBe("openai/gpt-5.2");
+  });
+
+  it("keeps product-tier suffixes unmatched instead of guessing", () => {
+    expect(matchRankingModelPricing(CATALOG, "kimi-k2.5-max")).toBeUndefined();
+    expect(matchRankingModelPricing(CATALOG, "gpt-5.2 Next")).toBeUndefined();
+  });
+
+  it("leaves dated slugs and parameter sizes alone when joining digits", () => {
+    expect(rankingSlugVariants("kimi-k2-0905")).not.toContain("kimi-k2.0905");
+    expect(rankingSlugVariants("qwen3.5-35b-a3b")).not.toContain("qwen3.5.35b-a3b");
+    expect(rankingSlugVariants("claude-opus-4-7-high")).toContain("claude-opus-4.7");
   });
 });
 

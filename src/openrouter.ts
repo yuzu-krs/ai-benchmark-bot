@@ -190,6 +190,65 @@ function slugifyDisplayName(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+/**
+ * Trailing reasoning-effort markers LMArena appends to leaderboard names
+ * ("-high", "(xHigh)"). Safe to drop because effort levels never name a
+ * different model — unlike "max"/"next", which are real product tiers.
+ */
+const EFFORT_TOKENS = new Set(["high", "medium", "low", "xhigh"]);
+
+function stripTrailingEffortTokens(slug: string): string {
+  const segments = slug.split("-");
+  while (segments.length > 1 && EFFORT_TOKENS.has(segments.at(-1) ?? "")) segments.pop();
+  return segments.join("-");
+}
+
+/** 1–2 digit runs, optionally already dotted, so "2.4" can absorb "1" → "2.4.1". */
+const SHORT_NUMBER_RUN = /^\d{1,2}(\.\d{1,2})*$/;
+
+/**
+ * "claude-opus-4-7" → "claude-opus-4.7". LMArena writes versions dash-separated
+ * while OpenRouter dots them. Only short digit runs join, so dated slugs
+ * ("kimi-k2-0905") and parameter sizes ("30b", "a3b") stay untouched.
+ */
+function dotJoinNumberRuns(slug: string): string {
+  const joined: string[] = [];
+  for (const segment of slug.split("-")) {
+    const previous = joined.at(-1);
+    if (previous !== undefined && SHORT_NUMBER_RUN.test(previous) && SHORT_NUMBER_RUN.test(segment)) {
+      joined[joined.length - 1] = `${previous}.${segment}`;
+    } else {
+      joined.push(segment);
+    }
+  }
+  return joined.join("-");
+}
+
+/**
+ * Conservative slug variants of a leaderboard name, tried in order as exact
+ * catalog lookups: the plain slug, then with parentheticals, trailing effort
+ * markers, and dash-split versions progressively normalized. Every variant is
+ * still an exact-slug match, so precision guarantees hold; names carrying real
+ * product tiers ("kimi-k3-max", "qwen3.8-flash-next") simply stay unmatched.
+ */
+export function rankingSlugVariants(displayName: string): string[] {
+  const withoutParens = displayName.replace(/\([^)]*\)/g, " ");
+  const shapes = new Set<string>([
+    slugifyDisplayName(displayName),
+    slugifyDisplayName(withoutParens)
+  ]);
+  const variants = new Set<string>();
+  for (const shape of shapes) {
+    const stripped = stripTrailingEffortTokens(shape);
+    for (const candidate of [shape, stripped]) {
+      variants.add(candidate);
+      const dotted = dotJoinNumberRuns(candidate);
+      if (dotted !== candidate) variants.add(dotted);
+    }
+  }
+  return [...variants];
+}
+
 export function buildOpenRouterCatalog(models: readonly OpenRouterModel[]): OpenRouterCatalog {
   const bySlug = new Map<string, OpenRouterModel>();
   const byHuggingFaceId = new Map<string, OpenRouterModel>();
@@ -260,9 +319,9 @@ export function matchAlertModelPricing(
 
 /**
  * Resolves one leaderboard display name. Order: normalized display-name
- * equality → dotted slug equality → precision-first token-subset scan.
- * Precision-first means an unmatched name simply shows no price; a wrong one
- * must never show a price.
+ * equality → formatting-variant slug equality (rankingSlugVariants) →
+ * precision-first token-subset scan. Precision-first means an unmatched name
+ * simply shows no price; a wrong one must never show a price.
  */
 export function matchRankingModelPricing(
   catalog: OpenRouterCatalog,
@@ -272,8 +331,10 @@ export function matchRankingModelPricing(
   if (name.length === 0) return undefined;
   const displayHit = catalog.byDisplayName.get(normalizeDisplayName(name));
   if (displayHit) return displayHit;
-  const slugHit = catalog.bySlug.get(slugifyDisplayName(name));
-  if (slugHit) return slugHit;
+  for (const slug of rankingSlugVariants(name)) {
+    const slugHit = catalog.bySlug.get(slug);
+    if (slugHit) return slugHit;
+  }
   return matchByTokenSubset(catalog, name);
 }
 
