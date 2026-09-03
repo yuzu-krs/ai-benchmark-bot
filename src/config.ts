@@ -29,7 +29,8 @@ const configSchema = z.object({
   DATA_DIR: z.string().min(1).default("./data"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   ALERT_POLL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
-  HUGGINGFACE_TOKEN: optionalSecret
+  HUGGINGFACE_TOKEN: optionalSecret,
+  AA_API_KEY: optionalSecret
 });
 
 export interface AppConfig {
@@ -42,6 +43,8 @@ export interface AppConfig {
   logLevel: "debug" | "info" | "warn" | "error";
   alertPollMinutes: number;
   huggingFaceToken?: string;
+  /** Artificial Analysis key; without it the ranking posts without AA boards. */
+  aaApiKey?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -57,6 +60,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (parsed.DISCORD_TOKEN) config.discordToken = parsed.DISCORD_TOKEN;
   if (parsed.DISCORD_CHANNEL_ID) config.discordChannelId = parsed.DISCORD_CHANNEL_ID;
   if (parsed.HUGGINGFACE_TOKEN) config.huggingFaceToken = parsed.HUGGINGFACE_TOKEN;
+  if (parsed.AA_API_KEY) config.aaApiKey = parsed.AA_API_KEY;
   return config;
 }
 

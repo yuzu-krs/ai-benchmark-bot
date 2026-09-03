@@ -86,6 +86,7 @@ export class Scheduler {
         ...(this.#deps.config.huggingFaceToken
           ? { huggingFaceToken: this.#deps.config.huggingFaceToken }
           : {}),
+        ...(this.#deps.config.aaApiKey ? { aaApiKey: this.#deps.config.aaApiKey } : {}),
         ...(this.#deps.now ? { now: this.#deps.now } : {}),
       });
     } catch (error) {

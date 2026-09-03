@@ -1,6 +1,6 @@
 # AI Benchmark Bot
 
-LMArena のランキングを毎日1回、主要プロバイダーの新モデル発表を即時に、個人Discordサーバーへ日本語で通知するBotです。
+LMArena / Artificial Analysis のランキングを毎日1回（1Embedに最大4ボード）、主要プロバイダーの新モデル発表を即時に、個人Discordサーバーへ日本語で通知するBotです。
 
 - **Node.js 24.18.1+** / TypeScript / discord.js（REST送信のみ・Gateway接続なし）
 - 状態は `data/` 配下の小さなJSONファイルだけ（DB不要）
@@ -10,7 +10,9 @@ LMArena のランキングを毎日1回、主要プロバイダーの新モデ�
 
 ### 📊 Daily Ranking
 
-毎日 `DIGEST_HOUR:DIGEST_MINUTE`（既定 07:00 Asia/Tokyo）に、LMArena **Overall** と **Coding** のTOP10を必ず投稿します。
+毎日 `DIGEST_HOUR:DIGEST_MINUTE`（既定 07:00 Asia/Tokyo）に、次の5ボードそれぞれのTOP10を1つのEmbedで必ず投稿します。
+
+`🏆 LMArena Overall` → `💻 LMArena Coding` → `🧠 AA Intelligence` → `🛠️ AA Coding`（`AA_API_KEY` 設定時）
 
 - 変動がなくても毎日投稿し、前回との差分を `🥇🥈🥉` `⬆️ +2` `⬇️ -1` `➖` `🆕 NEW` で示します
 - 各行にはOpenRouter公開APIから取得した短縮価格 `· $1.2/$12`（入力/出力のUSD・1Mトークンあたり、フッターの `💰` 凡例参照）が付きます。マッチしない行は価格なしで表示されます
@@ -18,7 +20,9 @@ LMArena のランキングを毎日1回、主要プロバイダーの新モデ�
 - 1ボードだけ取得失敗しても投稿は続行し、失敗ボードは `⚠️ ランキングを取得できませんでした。` と表示します
 - Discord投稿に失敗した場合は未投稿のまま残るため、次のtick（1分後）で自動再試行します
 
-データはHugging Face.datasets-server経由で公式dataset `lmarena-ai/leaderboard-dataset` から /rows で取得します（/filter はインデックス不具合で長期-downしていたため使いません）。Overallは `text_style_control` configの行データからカテゴリ `overall`（旧 `text`）を優先順にクライアント側で選択します。上流の一時的な5xx・429・タイムアウトは5秒→15秒のバックオフで3回まで自動リトライし、/rowsがロック中（501 "the dataset is currently locked"）でも `/first-rows`（キャッシュ配信・先頭100行）にフォールバックして当日分を取得します。同名モデルが複数行ある場合は最上位の行だけを採用します。
+LMArenaのデータはHugging Face.datasets-server経由で公式dataset `lmarena-ai/leaderboard-dataset` から /rows で取得します（/filter はインデックス不具合で長期-downしていたため使いません）。Overallは `text_style_control` configの行データからカテゴリ `overall`（旧 `text`）を優先順にクライアント側で選択します。上流の一時的な5xx・429・タイムアウトは5秒→15秒のバックオフで3回まで自動リトライし、/rowsがロック中（501 "the dataset is currently locked"）でも `/first-rows`（キャッシュ配信・先頭100行）にフォールバックして当日分を取得します。同名モデルが複数行ある場合は最上位の行だけを採用します。
+
+🧠 AA Intelligence と 🛠️ AA Coding はArtificial Analysisの無料枠データです。`GET https://artificialanalysis.ai/api/v2/language/models/free` をヘッダ `x-api-key`（環境変数 `AA_API_KEY`）付きで取得します。レスポンスは約4ページに分かれているため `pagination` のカーソルを追跡して全ページ（上限8ページのハードキャップ）を結合し、途中で失敗した場合はそのボードを失敗扱いにします（部分的なTOP10は投稿しません）。APIはrankを返さないためスコア降順でクライアント側に採番し、未計測（null）の行はボードごとに除外します。差分比較のキーにはAPIが返す安定ID（UUID）を使うため、表示名が変わっても比較は崩れません。無料枠は約100リクエスト/24時間のレート制限がありますが、取得は1日1回・両ボードで同じレスポンスを共有するため十分な余裕があります。利用規約により、AAボードを含む投稿には毎回フッターに `データ: artificialanalysis.ai` の出典表記を表示します（`🧠 AA指数 0-100` の目盛り注記もフッターに併記）。`AA_API_KEY` を未設定にした場合はAAボードの2つだけが警告なしで省略され、残りのボードだけで投稿します。
 
 ### 🚀 New Model Alert
 
@@ -74,17 +78,20 @@ Botの招待に必要な権限は `View Channel` / `Send Messages` / `Embed Link
 | `DATA_DIR` | `./data` | 状態JSONの保存先 |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `HUGGINGFACE_TOKEN` | — | 任意。LMArena取得のレート制限緩和 |
+| `AA_API_KEY` | — | 任意。設定すると Artificial Analysis の Intelligence / Coding ボードを追加（未設定でも LMArena は従来どおり投稿） |
 
-価格取得は公開API（OpenRouter）のため認証情報は不要です。
+価格取得（OpenRouter）は公開APIのため認証情報は不要です。
 
 ## 状態保存（DB不使用）
 
 ```text
 data/
-├─ lmarena-overall.json   # 前回のOverall TOP10（差分比較用）
-├─ lmarena-coding.json    # 前回のCoding TOP10
-├─ seen-models.json       # 通知済みモデル（上限500件、古いものから削除）
-└─ last-posted.json       # Daily Rankingの当日投稿済みフラグ（二重投稿防止・起動時catch-up）
+├─ lmarena-overall.json     # 前回のOverall TOP10（差分比較用）
+├─ lmarena-coding.json      # 前回のCoding TOP10
+├─ aa-intelligence.json     # 前回のAA Intelligence TOP10（AA_API_KEY設定時）
+├─ aa-coding.json           # 前回のAA Coding TOP10（AA_API_KEY設定時）
+├─ seen-models.json         # 通知済みモデル（上限500件、古いものから削除）
+└─ last-posted.json         # Daily Rankingの当日投稿済みフラグ（二重投稿防止・起動時catch-up）
 ```
 
 書き込みはtmpファイル＋renameのatomic writeで、再起動しても状態は維持されます。破損した状態ファイルがあると起動時にエラーで停止するため、該当ファイルを修復または削除してください。価格データは永続化せず、投稿のたびに取得します。
@@ -96,8 +103,8 @@ Bot起動
 │
 ├─ 📊 Daily Ranking（60秒tickで判定）
 │    毎日設定時刻以降かつ当日未投稿
-│      → LMArena Overall / Coding と OpenRouterカタログを並列取得（Overallはカテゴリ行が揃うまで冒頭ページ、Codingは先頭ページのみ／カタログ取得は失敗時は価格なしで続行）
-│      → data/lmarena-*.json の前回ランキングと比較
+│      → LMArena Overall / Coding・AA Intelligence / AA Coding（AA_API_KEY設定時）と OpenRouterカタログを並列取得（Overallはカテゴリ行が揃うまで冒頭ページ、AAは全ページ結合／カタログ取得は失敗時は価格なしで続行）
+│      → data/<ボード>.json の前回ランキングと比較
 │      → Embed生成・投稿 → 成功したボードだけ保存 → last-posted.json記録
 │
 └─ 🚀 New Model Alert（起動時 + ALERT_POLL_MINUTESごと）
@@ -118,6 +125,7 @@ npm run check # 型チェック
 ## データとライセンス
 
 - LMArena: 公式Hugging Face dataset（CC BY 4.0前提）。投稿には公式URLを添えます。
+- Artificial Analysis: Intelligence Index / Coding Index の無料枠データ。利用規約により、AAボードを含む投稿には毎回フッターに出典（[artificialanalysis.ai](https://artificialanalysis.ai/)）を表示します。
 - 公式発表: タイトル・短い要約・URLのみを扱い、記事本文は保存しません。
 - OpenRouter: 公開APIのモデルメタデータ（価格・コンテキスト長）を短い引用として表示します。本BotはOpenRouterと非提携です。
 

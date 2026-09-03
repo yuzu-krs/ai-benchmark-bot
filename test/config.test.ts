@@ -26,6 +26,12 @@ describe("loadConfig", () => {
     expect(config.huggingFaceToken).toBeUndefined();
   });
 
+  it("reads AA_API_KEY and treats a whitespace-only value as absent", () => {
+    expect(loadConfig({}).aaApiKey).toBeUndefined();
+    expect(loadConfig({ AA_API_KEY: "   " }).aaApiKey).toBeUndefined();
+    expect(loadConfig({ AA_API_KEY: "aa_live_key" }).aaApiKey).toBe("aa_live_key");
+  });
+
   it("rejects an invalid time zone and out-of-range digest times", () => {
     expect(() => loadConfig({ TIME_ZONE: "Mars/Olympus" })).toThrow(/TIME_ZONE/);
     expect(() => loadConfig({ DIGEST_HOUR: "24" })).toThrow();

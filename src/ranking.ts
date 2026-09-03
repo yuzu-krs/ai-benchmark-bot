@@ -1,6 +1,6 @@
+import { ALL_RANKING_BOARDS, buildRankedBoards } from "./boards.js";
 import { buildDailyRankingEmbed, compareWithPrevious, type BoardView } from "./embeds.js";
 import { errorFields, type Logger } from "./logger.js";
-import { fetchLmArenaTop, LMARENA_BOARDS, type LmArenaBoard } from "./lmarena.js";
 import {
   fetchOpenRouterModels,
   resolveRankingPricing,
@@ -8,15 +8,12 @@ import {
 } from "./openrouter.js";
 import type { StateStore } from "./state.js";
 import { localDateKey } from "./time.js";
-import type { EmbedPayload, RankedModel } from "./types.js";
-
-// Presentation only: board identity and display names come from LMARENA_BOARDS.
-const BOARD_PRESENTATION: Readonly<Record<LmArenaBoard, { emoji: string }>> = {
-  overall: { emoji: "🏆" },
-  coding: { emoji: "💻" }
-};
-
-const BOARDS: ReadonlyArray<LmArenaBoard> = ["overall", "coding"];
+import type {
+  EmbedPayload,
+  RankedModel,
+  RankingBoard,
+  RankingEmbedMeta
+} from "./types.js";
 
 export interface RankingDeps {
   timeZone: string;
@@ -25,6 +22,8 @@ export interface RankingDeps {
   send(embed: EmbedPayload): Promise<void>;
   fetchFn?: typeof globalThis.fetch;
   huggingFaceToken?: string;
+  /** Artificial Analysis key; unset omits both AA boards instead of failing them. */
+  aaApiKey?: string;
   now?: () => Date;
   /** Base delay for transient-source retries inside each board fetch. */
   retryDelayMs?: number;
@@ -33,11 +32,13 @@ export interface RankingDeps {
 export interface RankingResult {
   dateKey: string;
   posted: boolean;
-  boards: Record<LmArenaBoard, "ok" | "failed">;
+  boards: Partial<Record<RankingBoard, "ok" | "failed">>;
+  /** Boards whose source is not configured (e.g. no AA key); never failures. */
+  skipped: readonly RankingBoard[];
 }
 
 /**
- * Fetches both LMArena boards plus the OpenRouter pricing catalog in
+ * Fetches every configured board plus the OpenRouter pricing catalog in
  * parallel, posts the daily ranking embed, then persists the boards that
  * succeeded. A failed board is reported inside the embed and keeps its
  * previous snapshot so the next comparison stays meaningful; a failed
@@ -46,56 +47,66 @@ export interface RankingResult {
 export async function runDailyRanking(deps: RankingDeps): Promise<RankingResult> {
   const now = deps.now?.() ?? new Date();
   const dateKey = localDateKey(now, deps.timeZone);
+  const { boards: specs, embedMeta } = buildRankedBoards({
+    fetchFn: deps.fetchFn,
+    logger: deps.logger,
+    ...(deps.retryDelayMs !== undefined ? { retryDelayMs: deps.retryDelayMs } : {}),
+    ...(deps.huggingFaceToken ? { huggingFaceToken: deps.huggingFaceToken } : {}),
+    ...(deps.aaApiKey ? { aaApiKey: deps.aaApiKey } : {})
+  });
+  const configured = new Set(specs.map((spec) => spec.board));
+  const skipped = ALL_RANKING_BOARDS.filter((board) => !configured.has(board));
+  if (skipped.length > 0) {
+    deps.logger.info("ranking boards skipped; source not configured", { boards: skipped });
+  }
+
   const [results, pricingCatalog] = await Promise.all([
-    Promise.allSettled(
-      BOARDS.map((board) =>
-        fetchLmArenaTop(board, {
-          fetchFn: deps.fetchFn,
-          ...(deps.logger ? { logger: deps.logger } : {}),
-          ...(deps.huggingFaceToken ? { token: deps.huggingFaceToken } : {}),
-          ...(deps.retryDelayMs !== undefined ? { retryDelayMs: deps.retryDelayMs } : {})
-        })
-      )
-    ),
+    Promise.allSettled(specs.map((spec) => spec.fetch())),
     fetchPricingCatalog(deps)
   ]);
 
   const views: BoardView[] = [];
-  const succeeded: Array<{ board: LmArenaBoard; entries: RankedModel[] }> = [];
-  const boards: Record<LmArenaBoard, "ok" | "failed"> = { overall: "failed", coding: "failed" };
+  const succeeded: Array<{ board: RankingBoard; entries: RankedModel[] }> = [];
+  const boards: Partial<Record<RankingBoard, "ok" | "failed">> = {};
   results.forEach((result, index) => {
-    const board = BOARDS[index];
-    if (!board) return;
-    const spec = LMARENA_BOARDS[board];
+    const spec = specs[index];
+    if (!spec) return;
     if (result.status === "fulfilled") {
-      boards[board] = "ok";
-      const previous = deps.store.loadRanking(board);
+      boards[spec.board] = "ok";
+      const previous = deps.store.loadRanking(spec.board);
       const prices = pricingCatalog
         ? resolveRankingPricing(pricingCatalog, result.value.map((entry) => entry.name))
         : undefined;
       views.push({
-        board,
+        board: spec.board,
         title: spec.displayName,
-        emoji: BOARD_PRESENTATION[board].emoji,
+        emoji: spec.emoji,
         entries: compareWithPrevious(result.value, previous, prices)
       });
-      succeeded.push({ board, entries: result.value });
+      succeeded.push({ board: spec.board, entries: result.value });
     } else {
+      boards[spec.board] = "failed";
       deps.logger.error("ranking fetch failed", {
         leaderboard: spec.leaderboardId,
         ...errorFields(result.reason)
       });
       views.push({
-        board,
+        board: spec.board,
         title: spec.displayName,
-        emoji: BOARD_PRESENTATION[board].emoji
+        emoji: spec.emoji
       });
     }
   });
 
+  // Unconditional: returns {} when no source ran, so the embed keeps its
+  // meta-less shape whenever nothing succeeded.
+  const meta: RankingEmbedMeta = await embedMeta();
+
   // A send failure propagates to the caller: nothing is saved, so the next
   // scheduler tick retries the whole ranking for the same day.
-  await deps.send(buildDailyRankingEmbed({ boards: views, now, timeZone: deps.timeZone }));
+  await deps.send(
+    buildDailyRankingEmbed({ boards: views, now, timeZone: deps.timeZone, meta })
+  );
 
   const savedAt = now.toISOString();
   for (const { board, entries } of succeeded) {
@@ -104,10 +115,10 @@ export async function runDailyRanking(deps: RankingDeps): Promise<RankingResult>
   deps.store.saveLastPosted(dateKey, savedAt);
   deps.logger.info("daily ranking posted", {
     dateKey,
-    overall: boards.overall,
-    coding: boards.coding
+    boards,
+    ...(skipped.length > 0 ? { skipped } : {})
   });
-  return { dateKey, posted: true, boards };
+  return { dateKey, posted: true, boards, skipped };
 }
 
 /**

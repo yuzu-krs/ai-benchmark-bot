@@ -17,14 +17,39 @@ function entry(rank: number, name = `model-${rank}`): RankedModel {
 describe("StateStore", () => {
   it("round-trips ranking snapshots per board", () => {
     const { store } = newStore();
-    expect(store.loadRanking("overall")).toBeUndefined();
-    store.saveRanking("overall", [entry(1), entry(2)], "2026-08-16T00:00:00.000Z");
-    store.saveRanking("coding", [entry(1)], "2026-08-16T00:00:00.000Z");
-    expect(store.loadRanking("overall")).toEqual({
+    expect(store.loadRanking("lmarena-overall")).toBeUndefined();
+    store.saveRanking("lmarena-overall", [entry(1), entry(2)], "2026-08-16T00:00:00.000Z");
+    store.saveRanking("lmarena-coding", [entry(1)], "2026-08-16T00:00:00.000Z");
+    expect(store.loadRanking("lmarena-overall")).toEqual({
       savedAt: "2026-08-16T00:00:00.000Z",
       entries: [entry(1), entry(2)]
     });
-    expect(store.loadRanking("coding")?.entries).toHaveLength(1);
+    expect(store.loadRanking("lmarena-coding")?.entries).toHaveLength(1);
+  });
+
+  it("round-trips the AA boards under their own filenames", () => {
+    const { store, dir } = newStore();
+    store.saveRanking("aa-intelligence", [entry(1)], "2026-08-16T00:00:00.000Z");
+    store.saveRanking("aa-coding", [entry(1), entry(2)], "2026-08-16T00:00:00.000Z");
+    expect(store.loadRanking("aa-intelligence")?.entries).toHaveLength(1);
+    expect(store.loadRanking("aa-coding")?.entries).toHaveLength(2);
+    // The board key is the whole filename: no source prefix is prepended.
+    expect(existsSync(join(dir, "aa-intelligence.json"))).toBe(true);
+    expect(existsSync(join(dir, "aa-coding.json"))).toBe(true);
+  });
+
+  it("reads LMArena snapshots from the pre-registry filenames", () => {
+    const { store, dir } = newStore();
+    writeFileSync(
+      join(dir, "lmarena-overall.json"),
+      JSON.stringify({ savedAt: "2026-08-15T22:00:00.000Z", entries: [entry(1)] }),
+      "utf8"
+    );
+    expect(existsSync(join(dir, "lmarena-overall.json"))).toBe(true);
+    expect(store.loadRanking("lmarena-overall")).toEqual({
+      savedAt: "2026-08-15T22:00:00.000Z",
+      entries: [entry(1)]
+    });
   });
 
   it("writes JSON files atomically without leaving temporaries", () => {

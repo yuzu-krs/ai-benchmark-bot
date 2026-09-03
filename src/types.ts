@@ -19,6 +19,26 @@ export interface RankingSnapshot {
   entries: RankedModel[];
 }
 
+/** Upstream a ranking board is fetched from. */
+export type RankingSourceId = "lmarena" | "aa";
+
+/**
+ * Source-qualified board key. Also the state-file name (`<board>.json`), so
+ * existing values must never change once released; source-side identifiers
+ * live in the per-source registries.
+ */
+export type RankingBoard =
+  | "lmarena-overall"
+  | "lmarena-coding"
+  | "aa-intelligence"
+  | "aa-coding";
+
+/** Source-provided context rendered into the daily embed. */
+export interface RankingEmbedMeta {
+  /** AA terms of use require a visible attribution; the version is optional. */
+  aa?: { intelligenceIndexVersion?: string; attributionUrl: string };
+}
+
 export interface SeenModel {
   key: string;
   providerId: string;

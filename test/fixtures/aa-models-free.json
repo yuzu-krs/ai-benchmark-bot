@@ -1,0 +1,68 @@
+{
+  "tier": "free",
+  "intelligence_index_version": "4.1",
+  "pagination": { "page": 1, "page_size": 200, "total_pages": 2, "has_more": true },
+  "data": [
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "name": "Early Budget 1",
+      "slug": "early-budget-1",
+      "model_creator": { "id": "creator-budget", "name": "Budget AI" },
+      "evaluations": {
+        "artificial_analysis_intelligence_index": 21.3,
+        "artificial_analysis_coding_index": 18.4
+      },
+      "pricing": { "output_token_price_usd": 0.00000012 },
+      "performance": { "median_output_tokens_per_second": 88.5 }
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000002",
+      "name": "Fable 5.1",
+      "slug": "fable-5.1",
+      "model_creator": { "id": "creator-example", "name": "Example Labs" },
+      "evaluations": {
+        "artificial_analysis_intelligence_index": 65.7,
+        "artificial_analysis_coding_index": 62.4,
+        "artificial_analysis_agentic_index": 40.1
+      },
+      "pricing": { "output_token_price_usd": 0.000012 },
+      "performance": { "median_output_tokens_per_second": 141.2 }
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000003",
+      "name": "Nullmind 3",
+      "slug": "nullmind-3",
+      "model_creator": { "id": "creator-null", "name": "Null AI" },
+      "evaluations": {
+        "artificial_analysis_intelligence_index": null,
+        "artificial_analysis_coding_index": 55.2
+      }
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000004",
+      "name": "Baremetal 2",
+      "slug": "baremetal-2",
+      "model_creator": { "id": "creator-bare", "name": "Bare Labs" }
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000005",
+      "name": "Zeta Tie",
+      "slug": "zeta-tie",
+      "model_creator": { "id": "creator-tie", "name": "Tie Labs" },
+      "evaluations": {
+        "artificial_analysis_intelligence_index": 48.0,
+        "artificial_analysis_coding_index": null
+      }
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000006",
+      "name": "Alpha Tie",
+      "slug": "alpha-tie",
+      "model_creator": { "id": "creator-tie", "name": "Tie Labs" },
+      "evaluations": {
+        "artificial_analysis_intelligence_index": 48.0,
+        "artificial_analysis_coding_index": 47.5
+      }
+    }
+  ]
+}

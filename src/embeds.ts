@@ -4,6 +4,8 @@ import type {
   EmbedPayload,
   NewModelAnnouncement,
   RankedModel,
+  RankingBoard,
+  RankingEmbedMeta,
   RankingSnapshot
 } from "./types.js";
 
@@ -73,31 +75,58 @@ function deltaText(comparison: RankComparison): string {
 }
 
 export interface BoardView {
-  board: "overall" | "coding";
+  board: RankingBoard;
   title: string;
   emoji: string;
   entries?: RankComparison[];
 }
 
+/** Unchanging legend; source-specific notations are appended after it. */
+const FOOTER_LEGEND = "⬆️ 上昇 · ⬇️ 下降 · ➖ 変動なし · 🆕 新規ランクイン · 💰 入力/出力 $/1Mトークン";
+const NO_RANKING_MESSAGE = "⚠️ ランキングを取得できませんでした。";
+
+/**
+ * Renders the daily embed. `meta` only shapes the footer: the AA scale note
+ * plus a plain-text source credit (AA's terms of use make its attribution
+ * mandatory, and embed footers render no markdown, so the credit is the bare
+ * host name). A run without source meta keeps the exact two-board-era output.
+ */
 export function buildDailyRankingEmbed(params: {
   boards: BoardView[];
   now: Date;
   timeZone: string;
+  meta?: RankingEmbedMeta;
 }): EmbedPayload {
   const fields = params.boards.map((board) => ({
     name: `${board.emoji} ${board.title}`,
-    value: board.entries
-      ? buildBoardValue(board.entries)
-      : "⚠️ ランキングを取得できませんでした。"
+    value: board.entries ? buildBoardValue(board.entries) : NO_RANKING_MESSAGE
   }));
+  const description = [
+    `📅 ${formatLocalDate(params.now, params.timeZone)}`,
+    `🕒 Updated: ${formatLocalDateTime(params.now, params.timeZone)}`
+  ].join("\n");
+  const credit = params.meta?.aa
+    ? `データ: ${creditHost(params.meta.aa.attributionUrl)}`
+    : undefined;
   return {
     title: "📊 AI Benchmark Daily",
-    description: `📅 ${formatLocalDate(params.now, params.timeZone)}\n🕒 Updated: ${formatLocalDateTime(params.now, params.timeZone)}`,
+    description,
     color: 0x5865f2,
     fields,
-    footer: { text: "⬆️ 上昇 · ⬇️ 下降 · ➖ 変動なし · 🆕 新規ランクイン · 💰 入力/出力 $/1Mトークン" },
+    footer: {
+      text: [
+        FOOTER_LEGEND,
+        ...(params.meta?.aa ? ["🧠 AA指数 0-100"] : []),
+        ...(credit ? [credit] : [])
+      ].join(" · ")
+    },
     timestamp: params.now.toISOString()
   };
+}
+
+/** Bare host for the footer credit; embed footers render no markdown links. */
+function creditHost(url: string): string {
+  return url.replace(/^https:\/\/(www\.)?/, "").replace(/\/+$/, "");
 }
 
 /** Keeps one board's lines inside Discord's 1024-character field limit. */

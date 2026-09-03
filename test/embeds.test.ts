@@ -6,7 +6,8 @@ import {
   buildPricingFieldValue,
   compareWithPrevious,
   formatRankLine,
-  truncateText
+  truncateText,
+  type BoardView
 } from "../src/embeds.js";
 import type { NewModelAnnouncement, RankedModel, RankingSnapshot } from "../src/types.js";
 
@@ -83,17 +84,20 @@ describe("rank line formatting", () => {
 
 describe("daily ranking embed", () => {
   const now = new Date("2026-08-16T07:00:30.000Z");
+  const BASE_DESCRIPTION = "📅 2026/08/16\n🕒 Updated: 2026/08/16 16:00 JST";
+  const BASE_FOOTER =
+    "⬆️ 上昇 · ⬇️ 下降 · ➖ 変動なし · 🆕 新規ランクイン · 💰 入力/出力 $/1Mトークン";
 
   it("builds the two board fields with the legend footer", () => {
     const embed = buildDailyRankingEmbed({
       boards: [
         {
-          board: "overall",
+          board: "lmarena-overall",
           title: "LMArena Overall",
           emoji: "🏆",
           entries: compareWithPrevious([model(1, "Model A")], snapshot([model(2, "Model A")]))
         },
-        { board: "coding", title: "LMArena Coding", emoji: "💻" }
+        { board: "lmarena-coding", title: "LMArena Coding", emoji: "💻" }
       ],
       now,
       timeZone: "Asia/Tokyo"
@@ -108,6 +112,79 @@ describe("daily ranking embed", () => {
     expect(embed.description).toContain("📅 2026/08/16");
     expect(embed.description).toContain("🕒 Updated: 2026/08/16 16:00 JST");
     expect(embed.footer?.text).toContain("🆕 新規ランクイン");
+  });
+
+  it("stays byte-identical when meta is absent or empty", () => {
+    const boards: BoardView[] = [
+      { board: "lmarena-overall", title: "LMArena Overall", emoji: "🏆" },
+      { board: "aa-intelligence", title: "AA Intelligence", emoji: "🧠" }
+    ];
+    const absent = buildDailyRankingEmbed({ boards, now, timeZone: "Asia/Tokyo" });
+    const empty = buildDailyRankingEmbed({ boards, now, timeZone: "Asia/Tokyo", meta: {} });
+    for (const embed of [absent, empty]) {
+      expect(embed.description).toBe(BASE_DESCRIPTION);
+      expect(embed.footer?.text).toBe(BASE_FOOTER);
+    }
+  });
+
+  it("moves the AA credit and scale note into the footer, not the description", () => {
+    const embed = buildDailyRankingEmbed({
+      boards: [{ board: "aa-intelligence", title: "AA Intelligence", emoji: "🧠" }],
+      now,
+      timeZone: "Asia/Tokyo",
+      meta: {
+        aa: { intelligenceIndexVersion: "4.1", attributionUrl: "https://artificialanalysis.ai/" }
+      }
+    });
+    expect(embed.description).toBe(BASE_DESCRIPTION);
+    expect(embed.footer?.text).toBe(`${BASE_FOOTER} · 🧠 AA指数 0-100 · データ: artificialanalysis.ai`);
+  });
+
+  it("renders the same footer credit regardless of the reported version", () => {
+    const withVersion = buildDailyRankingEmbed({
+      boards: [],
+      now,
+      timeZone: "Asia/Tokyo",
+      meta: { aa: { intelligenceIndexVersion: "4.1", attributionUrl: "https://artificialanalysis.ai/" } }
+    });
+    const withoutVersion = buildDailyRankingEmbed({
+      boards: [],
+      now,
+      timeZone: "Asia/Tokyo",
+      meta: { aa: { attributionUrl: "https://artificialanalysis.ai/" } }
+    });
+    for (const embed of [withVersion, withoutVersion]) {
+      expect(embed.description).toBe(BASE_DESCRIPTION);
+      expect(embed.footer?.text).toBe(`${BASE_FOOTER} · 🧠 AA指数 0-100 · データ: artificialanalysis.ai`);
+    }
+  });
+
+  it("keeps a four-board embed inside Discord's total and per-field limits", () => {
+    const entries = Array.from({ length: 10 }, (_unused, index) =>
+      model(index + 1, `very-long-model-name-that-never-ends-${"x".repeat(60)}-${index}`)
+    );
+    const prices = new Map(entries.map((entry) => [entry.name, "$1.25/$10"]));
+    const comparisons = compareWithPrevious(entries, undefined, prices);
+    const embed = buildDailyRankingEmbed({
+      boards: (
+        [
+          ["lmarena-overall", "LMArena Overall", "🏆"],
+          ["lmarena-coding", "LMArena Coding", "💻"],
+          ["aa-intelligence", "AA Intelligence", "🧠"],
+          ["aa-coding", "AA Coding", "🛠️"]
+        ] as const
+      ).map(([board, title, emoji]) => ({ board, title, emoji, entries: comparisons })),
+      now,
+      timeZone: "Asia/Tokyo",
+      meta: {
+        aa: { intelligenceIndexVersion: "4.1", attributionUrl: "https://artificialanalysis.ai/" }
+      }
+    });
+    expect(embed.fields).toHaveLength(4);
+    for (const field of embed.fields) {
+      expect(field.value.length).toBeLessThanOrEqual(1024);
+    }
+    expect(JSON.stringify(embed).length).toBeLessThan(6000);
   });
 
   it("keeps every field within Discord's 1024-character limit for long model names", () => {
@@ -144,7 +221,7 @@ describe("daily ranking embed", () => {
 
   it("explains the price notation in the footer legend", () => {
     const embed = buildDailyRankingEmbed({
-      boards: [{ board: "overall", title: "LMArena Overall", emoji: "🏆" }],
+      boards: [{ board: "lmarena-overall", title: "LMArena Overall", emoji: "🏆" }],
       now: new Date("2026-08-16T07:00:30.000Z"),
       timeZone: "Asia/Tokyo"
     });

@@ -11,7 +11,7 @@ sudo mkdir -p /opt/ai-benchmark-bot /var/lib/ai-benchmark-bot
 sudo cp deploy/systemd/ai-benchmark-bot.service /etc/systemd/system/
 sudo cp deploy/ai-benchmark-bot.env.example /etc/ai-benchmark-bot.env
 sudo chmod 600 /etc/ai-benchmark-bot.env
-# /etc/ai-benchmark-bot.env に DISCORD_TOKEN / DISCORD_CHANNEL_ID を設定
+# /etc/ai-benchmark-bot.env に DISCORD_TOKEN / DISCORD_CHANNEL_ID を設定（HUGGINGFACE_TOKEN / AA_API_KEY は任意。AA_API_KEY を設定すると AA Intelligence / AA Coding ボードも投稿対象になる）
 sudo systemctl daemon-reload
 sudo systemctl enable --now ai-benchmark-bot
 ```

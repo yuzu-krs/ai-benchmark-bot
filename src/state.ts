@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { RankedModel, RankingSnapshot, SeenModel } from "./types.js";
+import type { RankedModel, RankingBoard, RankingSnapshot, SeenModel } from "./types.js";
 
-export type RankingBoard = "overall" | "coding";
+export type { RankingBoard } from "./types.js";
 
 /** Beyond this size the oldest seen-model records are dropped first. */
 const SEEN_MODEL_LIMIT = 500;
@@ -57,7 +57,9 @@ export class StateStore {
   }
 
   #rankingFile(board: RankingBoard): string {
-    return join(this.#dataDir, `lmarena-${board}.json`);
+    // The board key already carries its source prefix, so "lmarena-overall"
+    // keeps the pre-registry filename unchanged.
+    return join(this.#dataDir, `${board}.json`);
   }
 
   #seenModelsFile(): string {
