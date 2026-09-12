@@ -3,7 +3,9 @@
     "name": "Anthropic model launch",
     "title": "We've launched Claude Opus 5 (claude-opus-5)",
     "summary": "Claude Opus 5 is our new language model for complex reasoning.",
-    "hints": ["claude-opus-5"],
+    "hints": [
+      "claude-opus-5"
+    ],
     "expected": "confirmed",
     "modality": "text"
   },
@@ -23,14 +25,19 @@
     "name": "Anthropic tokenizer update",
     "title": "Claude Fable 5 and Claude Mythos 5 use a new tokenizer",
     "summary": "The tokenizer changes token counts compared with Claude Opus 4.7.",
-    "hints": ["claude-fable-5", "claude-mythos-5"],
+    "hints": [
+      "claude-fable-5",
+      "claude-mythos-5"
+    ],
     "expected": null
   },
   {
     "name": "Anthropic feature on existing model",
     "title": "We've launched task budgets in beta on Claude Opus 4.7",
     "summary": "The budget parameter controls a full agentic loop.",
-    "hints": ["claude-opus-4-7"],
+    "hints": [
+      "claude-opus-4-7"
+    ],
     "expected": null
   },
   {
@@ -56,21 +63,27 @@
     "name": "product launch mentioning explicit model id",
     "title": "Prompt caching and Batch API launch",
     "summary": "We launched prompt caching and the Batch API for Model: gpt-5.7-preview.",
-    "explicit": ["gpt-5.7-preview"],
+    "explicit": [
+      "gpt-5.7-preview"
+    ],
     "expected": null
   },
   {
     "name": "Google image-only family",
     "title": "Gemini 3.1 Flash Image is generally available",
     "summary": "gemini-3.1-flash-image is our native visual image model for image generation.",
-    "hints": ["gemini-3.1-flash-image"],
+    "hints": [
+      "gemini-3.1-flash-image"
+    ],
     "expected": null
   },
   {
     "name": "Google video-generation multimodal family",
     "title": "Gemini Omni Flash in public preview",
     "summary": "We launched a multimodal model for video generation from text descriptions and visual prompts.",
-    "hints": ["gemini-omni-flash-preview"],
+    "hints": [
+      "gemini-omni-flash-preview"
+    ],
     "expected": null
   },
   {
@@ -83,21 +96,27 @@
     "name": "Google audio-to-audio family",
     "title": "Released gemini-3.1-flash-live-preview",
     "summary": "The latest audio-to-audio model for real-time dialogue and voice-first applications.",
-    "hints": ["gemini-3.1-flash-live-preview"],
+    "hints": [
+      "gemini-3.1-flash-live-preview"
+    ],
     "expected": null
   },
   {
     "name": "Google native audio output family",
     "title": "Released gemini-2.5-flash-preview-native-audio-dialog",
     "summary": "A new Gemini model with native audio output capabilities.",
-    "hints": ["gemini-2.5-flash-preview-native-audio-dialog"],
+    "hints": [
+      "gemini-2.5-flash-preview-native-audio-dialog"
+    ],
     "expected": null
   },
   {
     "name": "text-capable multimodal model launch",
     "title": "Introducing Gemini 4 Pro",
     "summary": "Gemini 4 Pro is a vision-language model accepting image input and returning text.",
-    "hints": ["gemini-4-pro"],
+    "hints": [
+      "gemini-4-pro"
+    ],
     "expected": "confirmed",
     "modality": "multimodal_text"
   },
@@ -105,7 +124,9 @@
     "name": "uncertain model article",
     "title": "Gemini 4 model preview update",
     "summary": "The model is being evaluated with selected developers; no launch was announced.",
-    "hints": ["gemini-4-preview"],
+    "hints": [
+      "gemini-4-preview"
+    ],
     "expected": "candidate",
     "modality": "text"
   },
@@ -113,7 +134,9 @@
     "name": "model deprecation",
     "title": "We announced the deprecation of Claude Sonnet 4",
     "summary": "claude-sonnet-4-20250514 will be retired next month.",
-    "hints": ["claude-sonnet-4-20250514"],
+    "hints": [
+      "claude-sonnet-4-20250514"
+    ],
     "expected": null
   },
   {
@@ -126,7 +149,9 @@
     "name": "model alias redirect",
     "title": "Changed the latest Gemini aliases",
     "summary": "gemini-pro-latest now redirects to gemini-3-pro-preview.",
-    "hints": ["gemini-3-pro-preview"],
+    "hints": [
+      "gemini-3-pro-preview"
+    ],
     "expected": null
   },
   {
@@ -139,7 +164,9 @@
     "name": "Qwen embedding and reranking model",
     "title": "Qwen3 Embedding",
     "summary": "We release Qwen3 Embedding, a new model for text embedding, retrieval, and reranking.",
-    "hints": ["qwen3-embedding"],
+    "hints": [
+      "qwen3-embedding"
+    ],
     "expected": null
   },
   {
@@ -152,8 +179,44 @@
     "name": "Qwen text-output omni model",
     "title": "Introducing Qwen3-Omni",
     "summary": "A vision-language model that accepts text, images, audio, and video and returns text.",
-    "hints": ["qwen3-omni"],
+    "hints": [
+      "qwen3-omni"
+    ],
     "expected": "confirmed",
     "modality": "multimodal_text"
+  },
+  {
+    "name": "DeepSeek multimodal text release",
+    "title": "DeepSeek-V4.1-Flash Release",
+    "summary": "Today, we officially release the DeepSeek-V4.1-Flash model. It is the smallest model in our new architecture family, with native multimodal visual understanding. The new architecture is designed for a higher capability ceiling, faster inference, higher throughput, and scaling to larger models. GPQA Diamond: 90.9 HLE: 36.8 (39.1*) Codeforces (Rating): 3471 MathArena Apex: 65.6 Terminal-Bench 2.1: 90.6 Terminal-Bench 3.0: 30.0 Terminal-Bench 4.0: 31.2 DeepSWE v1.1: 74.2 ProgramBench: 20.3 NL2Repo-Bench: 65.4 CyberGym: 88.1 SEC-Bench Pro: 62.8 ExploitGym: 15.3 HLE (w/tools): 63.9 Automation-Benc…",
+    "hints": [
+      "deepseek-flash",
+      "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp"
+    ],
+    "expected": "confirmed",
+    "modality": "text"
+  },
+  {
+    "name": "Mistral deprecated stub",
+    "title": "Announcing Pixtral 12B",
+    "summary": "Pixtral 12B is deprecated. Discover Mistral AI’s latest vision models and capabilities in our updated documentation.",
+    "hints": [],
+    "explicit": [],
+    "expected": null
+  },
+  {
+    "name": "OpenAI launch with vision prose",
+    "title": "OpenAI API entry: gpt-5.5 — Apr 24",
+    "summary": "Released GPT 5.5, a new frontier model for complex professional work, to the Chat Completions and Responses API, and released GPT 5.5 Pro for Responses API requests for tougher problems that benefit from more compute. GPT 5.5 supports a 1M token context window, image input, structured outputs, function calling, prompt caching, Batch, tool search, built in computer use, hosted shell, apply patch, Skills, MCP, and web search. Key updates include: Reasoning effort now defaults to medium . When image detail is unset or set to auto , the model now uses original behavior. Caching for GPT 5.5 only w…",
+    "hints": [
+      "medium",
+      "image_detail",
+      "auto"
+    ],
+    "explicit": [
+      "gpt-5.5"
+    ],
+    "expected": "confirmed"
   }
 ]

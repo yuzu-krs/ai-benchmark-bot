@@ -162,7 +162,17 @@ export function classifyAnnouncement(
     /\b(?:deprecat(?:e|ed|ing|ion)|retir(?:e|ed|ing|ement)|sunset|shut(?:ting)? down|end of life)\b/i.test(
       title
     );
-  if (deprecationInTitle || (deprecation && !directNewModel)) return null;
+  // A summary that opens by declaring deprecation makes the entry a
+  // retirement notice even when the original launch headline ("Announcing
+  // X") still carries a launch verb — providers rewrite old posts in place.
+  const deprecationLead =
+    /\b(?:deprecat(?:e|ed|ing|ion)|retir(?:e|ed|ing|ement)|sunset|shut(?:ting)? down|end of life)\b/i.test(
+      firstSentence
+    ) &&
+    !/\b(?:introduc(?:e|ed|ing)|announc(?:e|ed|ing)|unveil(?:ed|ing)?|launch(?:ed|ing)?|releas(?:e|ed|ing))\b/i.test(
+      firstSentence
+    );
+  if (deprecationInTitle || deprecationLead || (deprecation && !directNewModel)) return null;
 
   const imageSpecificFamily =
     /\b(?:[a-z0-9]+(?:-[a-z0-9]+)*-image(?:-[a-z0-9.]+)*|gemini[-\s]\d+(?:\.\d+)*(?:[-\s](?:flash(?:[-\s]lite)?|pro))?[-\s]image|grok-imagine(?:-[a-z0-9.]+)*|qwen[-\s]?(?:vlo|image)(?:-[a-z0-9.]+)*|glm[-\s]?(?:image|ocr)(?:-[a-z0-9.]+)*|cogvideox?(?:-[a-z0-9.]+)*|nano banana(?:\s+\d+)?|imagen(?:[-\s]?\d+)?|veo(?:[-\s]?\d+)?|dall-e(?:[-\s]?\d+)?|sora(?:[-\s]?\d+)?)\b/i.test(
@@ -200,9 +210,16 @@ export function classifyAnnouncement(
     return null;
   }
 
+  // Output-modality ambiguity only counts when the marker is in the
+  // announced model's name, i.e. the entry title. Prose such as "multimodal
+  // visual understanding" describes vision input on a text model, and
+  // summary mentions of other models (retired predecessors, comparisons)
+  // say nothing about this release, so neither may suppress an inherently
+  // text family.
+  const modelIds = extractModelIds(text, modelIdHints, validExplicitModelIds);
   const ambiguousOutputFamily =
     /\b(?:omni|audio|live[-\s]?translate|vision|visual|image|video|voice|(?:^|[-\s])vl(?:[-\s]|$))\b/i.test(
-      text
+      title
     );
   const inherentlyTextFamily =
     /(?:\b(?:gpt|claude|gemini|grok|deepseek|glm|autoglm|kimi|moonshot|llama|qwq|mistral|mixtral|ministral|codestral|devstral|magistral|muse[-\s]spark)\b|\bqwen\d*\b)/i.test(
@@ -235,7 +252,7 @@ export function classifyAnnouncement(
   return {
     confidence: directNewModel ? "confirmed" : "candidate",
     modality,
-    modelIds: extractModelIds(text, modelIdHints, validExplicitModelIds),
+    modelIds,
     stage: detectReleaseStage(lower)
   };
 }
@@ -311,7 +328,7 @@ function detectReleaseStage(lower: string): ReleaseStage {
   if (/research preview/.test(lower)) return "research_preview";
   if (/open[- ]weights?|open source|open-source/.test(lower)) return "open_weights";
   if (/\b(?:preview|public beta|beta)\b/.test(lower)) return "preview";
-  if (/\b(?:general availability|generally available|ga release|production-ready|now available|official(?:ly)? releas)\b/.test(lower)) {
+  if (/\b(?:general availability|generally available|ga release|production-ready|now available|official(?:ly)? releas(?:e[ds]?|ing)?)\b/.test(lower)) {
     return "general_availability";
   }
   return "unknown";
