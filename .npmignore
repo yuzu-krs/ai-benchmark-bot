@@ -1,0 +1,11 @@
+# Packed tree for git-dependency installs: ship dist/ (built by prepare),
+# keep development files out. This file replaces .gitignore for packing, so
+# local secrets must be listed here as well.
+src/
+test/
+deploy/
+data/
+scripts-post-once.ts
+.env*
+*.sqlite
+.claude/

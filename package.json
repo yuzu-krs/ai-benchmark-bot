@@ -1,6 +1,6 @@
 {
   "name": "ai-benchmark-bot",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Discord bot that posts a daily LMArena ranking and new-model alerts.",
   "type": "module",
