@@ -1,6 +1,6 @@
 {
   "name": "ai-benchmark-bot",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Discord bot that posts a daily LMArena ranking and new-model alerts.",
   "type": "module",
@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
+    "prepare": "npm run build",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run",

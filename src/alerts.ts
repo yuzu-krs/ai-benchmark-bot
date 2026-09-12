@@ -17,7 +17,7 @@ export interface AlertsDeps {
   timeZone: string;
   store: StateStore;
   logger: Logger;
-  send(embed: EmbedPayload): Promise<void>;
+  send(embed: EmbedPayload, alert: NewModelAnnouncement): Promise<void>;
   sources?: readonly ProviderSource[];
   fetchFn?: typeof globalThis.fetch;
   now?: () => Date;
@@ -100,7 +100,7 @@ export async function pollNewModelAlerts(deps: AlertsDeps): Promise<number> {
       ...(Object.keys(pricingByModel).length > 0 ? { pricingByModel } : {})
     };
     try {
-      await deps.send(buildNewModelEmbed(enriched, deps.timeZone));
+      await deps.send(buildNewModelEmbed(enriched, deps.timeZone), enriched);
     } catch (error) {
       // Leave the models unseen so the next poll retries this alert. A
       // pricing failure is not a send failure, so it never delays recording.
