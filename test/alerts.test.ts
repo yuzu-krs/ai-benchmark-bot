@@ -161,6 +161,53 @@ describe("pollNewModelAlerts", () => {
     expect(harness.log.sent).toHaveLength(1);
   });
 
+  it("posts one alert when one entry splits into items sharing the same models", async () => {
+    const harness = createHarness();
+    // The family id is already known (as on the live server), leaving the two
+    // new ids fresh for both items.
+    harness.store.saveSeenModels([
+      { key: seenModelKey("openai", "gpt-6"), providerId: "openai", modelId: "gpt-6", firstSeenAt: "2026-08-01T00:00:00.000Z" }
+    ]);
+    // Mirrors the OpenAI changelog: one section with two `Model:` lines is
+    // parsed into two confirmed items whose text each mentions both ids, so
+    // every item claims every model.
+    const splitEntry: RawAnnouncement[] = [
+      {
+        key: "sep-22/model:gpt-6-sol",
+        title: "OpenAI API entry: gpt-6-sol — Sep 22",
+        url: "https://example.com/launch",
+        summary: "Released GPT 6 Sol ( gpt-6-sol ) and GPT 6 Luna ( gpt-6-luna ), reasoning models.",
+        explicitModelIds: ["gpt-6-sol"]
+      },
+      {
+        key: "sep-22/model:gpt-6-luna",
+        title: "OpenAI API entry: gpt-6-luna — Sep 22",
+        url: "https://example.com/launch",
+        summary: "Released GPT 6 Sol ( gpt-6-sol ) and GPT 6 Luna ( gpt-6-luna ), reasoning models.",
+        explicitModelIds: ["gpt-6-luna"]
+      }
+    ];
+
+    const notified = await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger, send: harness.send,
+      sources: [source("openai", () => splitEntry)],
+      fetchFn: harness.fetchFn, now: fixedNow
+    });
+    expect(notified).toBe(1);
+    expect(harness.log.sent).toHaveLength(1);
+    const fields = Object.fromEntries(harness.log.sent[0]!.fields.map((field) => [field.name, field.value]));
+    expect(fields["🧠 Model"]).toBe("gpt-6-luna, gpt-6-sol");
+
+    // Both models are recorded as seen, so the next poll stays silent.
+    const second = await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger, send: harness.send,
+      sources: [source("openai", () => splitEntry)],
+      fetchFn: harness.fetchFn, now: fixedNow
+    });
+    expect(second).toBe(0);
+    expect(harness.log.sent).toHaveLength(1);
+  });
+
   it("skips candidate announcements and only notifies confirmed launches", async () => {
     const harness = createHarness();
     harness.store.saveSeenModels([]);

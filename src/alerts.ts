@@ -41,6 +41,10 @@ export async function pollNewModelAlerts(deps: AlertsDeps): Promise<number> {
   const baseline = !deps.store.hasSeenModels();
   const seen = baseline ? [] : deps.store.loadSeenModels();
   const seenKeys = new Set(seen.map((model) => model.key));
+  // Models already claimed by an earlier item in this same run: one changelog
+  // entry can split into several confirmed items that all carry the sibling
+  // model ids, and only the first may announce them.
+  const claimedKeys = new Set<string>();
   const additions: SeenModel[] = [];
   const pending: Array<{ source: ProviderSource; freshModels: string[]; alert: NewModelAnnouncement }> = [];
 
@@ -66,10 +70,12 @@ export async function pollNewModelAlerts(deps: AlertsDeps): Promise<number> {
       continue;
     }
     for (const item of confirmed) {
-      const freshModels = item.modelIds.filter(
-        (modelId) => !seenKeys.has(seenModelKey(source.id, modelId))
-      );
+      const freshModels = item.modelIds.filter((modelId) => {
+        const key = seenModelKey(source.id, modelId);
+        return !seenKeys.has(key) && !claimedKeys.has(key);
+      });
       if (freshModels.length === 0) continue;
+      for (const modelId of freshModels) claimedKeys.add(seenModelKey(source.id, modelId));
       pending.push({
         source,
         freshModels,
