@@ -179,16 +179,16 @@ function collapseSpellingVariants(
     if (group) group.push(modelId);
     else groups.set(key, [modelId]);
   }
-  return [...groups.values()].map((group) => {
-    if (group.length === 1) return group[0];
-    if (catalog) {
-      const priced = group.find(
-        (modelId) => matchAlertModelPricing(catalog, providerId, modelId) !== undefined
-      );
-      if (priced !== undefined) return priced;
-    }
-    return group[0];
-  });
+  const collapsed: string[] = [];
+  for (const group of groups.values()) {
+    const kept =
+      group.find(
+        (modelId) =>
+          catalog !== undefined && matchAlertModelPricing(catalog, providerId, modelId) !== undefined
+      ) ?? group[0];
+    if (kept !== undefined) collapsed.push(kept);
+  }
+  return collapsed;
 }
 
 function recordSeen(
