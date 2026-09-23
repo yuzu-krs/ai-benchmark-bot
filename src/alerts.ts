@@ -3,6 +3,7 @@ import { buildNewModelEmbed } from "./embeds.js";
 import { errorFields, type Logger } from "./logger.js";
 import {
   fetchOpenRouterModels,
+  matchAlertModelPricing,
   resolveAlertPricing,
   type OpenRouterCatalog
 } from "./openrouter.js";
@@ -100,9 +101,13 @@ export async function pollNewModelAlerts(deps: AlertsDeps): Promise<number> {
 
   let notified = 0;
   for (const { source, freshModels, alert } of pending) {
-    const pricingByModel = catalog ? resolveAlertPricing(catalog, source.id, freshModels) : {};
+    // One entry often names a model in two spellings; announce it once, but
+    // mark every spelling seen so the dropped one cannot re-alert later.
+    const alertModels = collapseSpellingVariants(freshModels, source.id, catalog);
+    const pricingByModel = catalog ? resolveAlertPricing(catalog, source.id, alertModels) : {};
     const enriched: NewModelAnnouncement = {
       ...alert,
+      modelIds: alertModels,
       ...(Object.keys(pricingByModel).length > 0 ? { pricingByModel } : {})
     };
     try {
@@ -112,7 +117,7 @@ export async function pollNewModelAlerts(deps: AlertsDeps): Promise<number> {
       // pricing failure is not a send failure, so it never delays recording.
       deps.logger.error("new model alert send failed", {
         provider: source.id,
-        models: freshModels,
+        models: alertModels,
         ...errorFields(error)
       });
       continue;
@@ -121,7 +126,7 @@ export async function pollNewModelAlerts(deps: AlertsDeps): Promise<number> {
     for (const modelId of freshModels) {
       recordSeen(additions, seenKeys, source.id, modelId, now);
     }
-    deps.logger.info("new model alert sent", { provider: source.id, models: freshModels });
+    deps.logger.info("new model alert sent", { provider: source.id, models: alertModels });
   }
 
   if (baseline) {
@@ -151,6 +156,39 @@ async function loadPricingCatalog(deps: AlertsDeps): Promise<OpenRouterCatalog |
     );
     return undefined;
   }
+}
+
+/**
+ * Collapses dot/hyphen spelling variants of the same model id — a changelog
+ * entry often names a product both as prose ("Claude Opus 5.5") and as an API
+ * id ("claude-opus-5-5"), and treating the spellings as separate models posts
+ * two near-duplicate alerts. The spelling the pricing catalog lists wins, so
+ * the alert keeps its price line; without a catalog (or when neither is
+ * listed) the first-seen spelling stays. Callers must still record every
+ * input spelling as seen, or the dropped one re-alerts on the next poll.
+ */
+function collapseSpellingVariants(
+  modelIds: readonly string[],
+  providerId: string,
+  catalog: OpenRouterCatalog | undefined
+): string[] {
+  const groups = new Map<string, string[]>();
+  for (const modelId of modelIds) {
+    const key = modelId.toLowerCase().replace(/\./g, "-");
+    const group = groups.get(key);
+    if (group) group.push(modelId);
+    else groups.set(key, [modelId]);
+  }
+  return [...groups.values()].map((group) => {
+    if (group.length === 1) return group[0];
+    if (catalog) {
+      const priced = group.find(
+        (modelId) => matchAlertModelPricing(catalog, providerId, modelId) !== undefined
+      );
+      if (priced !== undefined) return priced;
+    }
+    return group[0];
+  });
 }
 
 function recordSeen(

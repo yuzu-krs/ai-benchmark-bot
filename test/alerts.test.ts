@@ -6,7 +6,7 @@ import { pollNewModelAlerts, seenModelKey } from "../src/alerts.js";
 import type { ProviderSource, RawAnnouncement } from "../src/announcements/index.js";
 import type { Logger } from "../src/logger.js";
 import { StateStore } from "../src/state.js";
-import type { EmbedPayload } from "../src/types.js";
+import type { EmbedPayload, NewModelAnnouncement } from "../src/types.js";
 
 const logger: Logger = {
   debug: () => undefined,
@@ -425,5 +425,83 @@ describe("pollNewModelAlerts", () => {
     expect(notified).toBe(2);
     expect(harness.log.sent).toHaveLength(2);
     expect(harness.calls.openRouter).toBe(1);
+  });
+
+  it("collapses dot/hyphen spellings of one model to the catalog-listed id", async () => {
+    const harness = createHarness();
+    harness.store.saveSeenModels([]);
+    // Mirrors the Anthropic entry: prose carries "Claude Opus 5.5" while the
+    // API id "claude-opus-5-5" is explicit, so extraction yields both.
+    const catalogModel = {
+      id: "anthropic/claude-opus-5.5",
+      name: "Anthropic: Claude Opus 5.5",
+      hugging_face_id: null,
+      created: 2,
+      context_length: 1000000,
+      pricing: { prompt: "0.000004", completion: "0.00002" }
+    };
+    harness.setPricingResponder(() => Promise.resolve(pricingResponse([catalogModel])));
+    const alerts: NewModelAnnouncement[] = [];
+    const sources = [
+      source("anthropic", () => [
+        {
+          key: "claude-opus-5-5",
+          title: "Claude Opus 5.5",
+          url: "https://example.com/launch",
+          summary: "We've launched Claude Opus 5.5 ( claude-opus-5-5 ), a model for agentic coding.",
+          explicitModelIds: ["claude-opus-5-5"]
+        }
+      ])
+    ];
+
+    const notified = await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger,
+      send: async (_embed, alert) => {
+        alerts.push(alert);
+      },
+      sources, fetchFn: harness.fetchFn, now: fixedNow
+    });
+
+    expect(notified).toBe(1);
+    // The catalog-listed dot spelling wins, keeping the price line.
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.modelIds).toEqual(["claude-opus-5.5"]);
+    expect(alerts[0]?.pricingByModel?.["claude-opus-5.5"]).toBeDefined();
+    // Both spellings are seen, so the dropped one cannot re-alert later.
+    expect(harness.store.loadSeenModels().map((model) => model.key)).toEqual([
+      seenModelKey("anthropic", "claude-opus-5-5"),
+      seenModelKey("anthropic", "claude-opus-5.5")
+    ]);
+  });
+
+  it("keeps the first spelling when no variant is catalog-listed", async () => {
+    const harness = createHarness();
+    harness.store.saveSeenModels([]);
+    const alerts: NewModelAnnouncement[] = [];
+    const sources = [
+      source("anthropic", () => [
+        {
+          key: "claude-opus-5-5",
+          title: "Claude Opus 5.5",
+          url: "https://example.com/launch",
+          summary: "We've launched Claude Opus 5.5 ( claude-opus-5-5 ), a model for agentic coding.",
+          explicitModelIds: ["claude-opus-5-5"]
+        }
+      ])
+    ];
+
+    await pollNewModelAlerts({
+      timeZone: "Asia/Tokyo", store: harness.store, logger,
+      send: async (_embed, alert) => {
+        alerts.push(alert);
+      },
+      sources, fetchFn: harness.fetchFn, now: fixedNow
+    });
+
+    expect(alerts[0]?.modelIds).toEqual(["claude-opus-5-5"]);
+    expect(harness.store.loadSeenModels().map((model) => model.key)).toEqual([
+      seenModelKey("anthropic", "claude-opus-5-5"),
+      seenModelKey("anthropic", "claude-opus-5.5")
+    ]);
   });
 });
